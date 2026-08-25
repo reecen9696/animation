@@ -1,0 +1,99 @@
+{
+  "mark": {
+    "viewBox": "0 0 25 25",
+    "dots": 7
+  },
+  "timing": {
+    "origin": "diagonal",
+    "pulseMs": 900,
+    "waveTravelMs": 620,
+    "restMs": 500,
+    "maxDelayMs": 620,
+    "cycleMs": 2020
+  },
+  "curve": {
+    "minScale": 0.84,
+    "dipPoint": 0.45,
+    "rebound": 0.02,
+    "opacityDip": 0.0
+  },
+  "dots": [
+    {
+      "key": "tl",
+      "name": "Top left",
+      "cx": 4.3241,
+      "cy": 7.28461,
+      "offset": 0.0,
+      "delayMs": 0,
+      "startMs": 0,
+      "endMs": 900,
+      "cycleMs": 2020
+    },
+    {
+      "key": "top",
+      "name": "Top",
+      "cx": 12.2056,
+      "cy": 2.25878,
+      "offset": 0.1119,
+      "delayMs": 69,
+      "startMs": 69,
+      "endMs": 969,
+      "cycleMs": 2020
+    },
+    {
+      "key": "ll",
+      "name": "Lower left",
+      "cx": 3.912,
+      "cy": 16.6244,
+      "offset": 0.3498,
+      "delayMs": 217,
+      "startMs": 217,
+      "endMs": 1117,
+      "cycleMs": 2020
+    },
+    {
+      "key": "core",
+      "name": "Core",
+      "cx": 12.2056,
+      "cy": 11.8344,
+      "offset": 0.4871,
+      "delayMs": 302,
+      "startMs": 302,
+      "endMs": 1202,
+      "cycleMs": 2020
+    },
+    {
+      "key": "tr",
+      "name": "Top right",
+      "cx": 20.0952,
+      "cy": 7.28461,
+      "offset": 0.618,
+      "delayMs": 383,
+      "startMs": 383,
+      "endMs": 1283,
+      "cycleMs": 2020
+    },
+    {
+      "key": "bottom",
+      "name": "Bottom",
+      "cx": 12.2056,
+      "cy": 20.9421,
+      "offset": 0.844,
+      "delayMs": 523,
+      "startMs": 523,
+      "endMs": 1423,
+      "cycleMs": 2020
+    },
+    {
+      "key": "lr",
+      "name": "Lower right",
+      "cx": 20.5056,
+      "cy": 16.6247,
+      "offset": 1.0,
+      "delayMs": 620,
+      "startMs": 620,
+      "endMs": 1520,
+      "cycleMs": 2020
+    }
+  ]
+}

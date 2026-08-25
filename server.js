@@ -1,0 +1,344 @@
+/**
+ * Zero-dependency dev server for the Scatter loading screen.
+ *
+ *   node server.js            # http://localhost:4173
+ *   PORT=8080 node server.js
+ *
+ * Routes
+ *   /                  index of the variants
+ *   /test              loading screen, default preset
+ *   /test/:id          loading screen for :id
+ *                      - if :id names a preset (pulse|breathe|snap|ripple) it selects it
+ *                      - otherwise :id is treated as an opaque id (game, session, round)
+ *                        and the preset comes from ?preset=
+ *   /workbench         the tuning workbench
+ *   /public/*          static assets
+ *
+ * Query overrides on /test: min, dip, over, pulse, travel, rest, fade, preset, debug
+ */
+
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const anim = require("./anim.js");
+
+const PORT = process.env.PORT || 4173;
+const ROOT = __dirname;
+
+const MIME = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+  ".svg": "image/svg+xml", ".csv": "text/csv; charset=utf-8"
+};
+
+const esc = s => String(s).replace(/[&<>"']/g, ch =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
+/* ---------------------------------------------------------------- pages */
+
+const ALL_PRESETS = { ...anim.PRESETS, ...anim.ORBIT_PRESETS, ...anim.CUBE_PRESETS,
+                      ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS, ...anim.DROP_PRESETS };
+
+function loadingPage({ id, presetId, config, debug }) {
+  const cycle = anim.cycleOf(config);
+  const presetLinks = Object.keys(ALL_PRESETS);
+
+  /* Debug rows differ per mode. */
+  let rows;
+  if (/^(roll|smear|drop)$/.test(config.mode)) {
+    rows = [["turns", `${config.rollCount}`],
+            ["one go", `${anim.goDeg(config)}&deg;`],
+            ["spin time", `${config.rollMs}ms`],
+            ["wind back", `${config.rollBack}&deg;`],
+            ["over-roll", `${config.rollOver}&deg;`],
+            ["rest", `${config.rollHold}ms`]]
+      .concat(config.mode === "smear"
+        ? [["circles", `${Math.round(config.flattenCircle * 100)}%`],
+           ["ovals", `${Math.round(config.flattenOval * 100)}%`]]
+        : config.mode === "drop"
+        ? [["tail", `${Math.round(config.dropAmt * 100)}%`],
+           ["stretch", `${Math.round(config.dropStretch * 100)}%`],
+           ["liquid lag", `${Math.round(config.liquid * 100)}%`]] : []);
+  } else if (config.mode === "cube") {
+    const q = anim.cubePhases(config);
+    rows = [["tuck in", `${config.tuckMs}ms`], ["rolls", `${config.steps}`],
+            ["per roll", `${config.stepMs}ms`], ["deg per roll", `${q.stepDeg.toFixed(0)}&deg;`],
+            ["hop", `${config.hop} units`], ["squash", `${Math.round(config.squash * 100)}%`],
+            ["tuck", `${Math.round(config.tuck * 100)}%`],
+            ["snap out", `${config.snapMs}ms`], ["rest", `${config.cubeRest}ms`],
+            ["tumble ends", `${q.tumbleEnd}ms`], ["open at", `${q.snapEnd}ms`]];
+  } else if (config.mode === "orbit") {
+    const o = anim.orbitPhases(config);
+    rows = [["push out", `${config.pushMs}ms`], ["bloom stagger", `${config.bloomMs}ms`],
+            ["spin", `${config.spinMs}ms`], ["pull in", `${config.returnMs}ms`],
+            ["rest", `${config.orbitRest}ms`], ["push", `${config.push} units`],
+            ["wind back", `${config.windup}&deg;`], ["turn", `${config.turns * 360}&deg;`],
+            ["spin starts", `${o.bloomEnd}ms`], ["spin ends", `${o.spinEnd}ms`]];
+  } else {
+    const { delays } = anim.timing(config);
+    rows = [["pulse", `${config.pulse}ms`], ["travel", `${config.travel}ms`],
+            ["rest", `${config.rest}ms`], ["min scale", `${config.min}`]]
+      .concat(Object.keys(delays).sort((a, b) => delays[a] - delays[b])
+        .map(k => [k, `${delays[k]}ms`]));
+  }
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loading &middot; ${esc(id || presetId)}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box }
+  html, body { height: 100% }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #000;
+    overflow: hidden;
+  }
+
+  /* The app screenshot standing in for the real page underneath. */
+  .backdrop {
+    position: fixed; inset: 0;
+    background: #000 url("/public/background.jpg") center top / cover no-repeat;
+  }
+
+  /* 50% black scrim between the app and the loader. */
+  .scrim {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .loader {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+    z-index: 2;
+  }
+
+  ${anim.markCss(config, "scatter-mark").split("\n").map(l => "  " + l).join("\n").trim()}
+
+  .scatter-mark {
+    width: clamp(100px, 11.4vw, 180px);
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 6px 28px rgba(0, 0, 0, .45));
+  }
+
+  /* Hint, corner debug panel: both fade out and never block the pointer. */
+  .hint {
+    position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%);
+    z-index: 3; pointer-events: none;
+    font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+    color: rgba(255, 255, 255, .5);
+    background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .12);
+    padding: 7px 14px; border-radius: 999px;
+    backdrop-filter: blur(6px);
+    transition: opacity .6s ease; opacity: 1;
+  }
+  .hint.gone { opacity: 0 }
+  .hint b { color: rgba(255, 255, 255, .82); font-weight: 600 }
+
+  .debug {
+    position: fixed; top: 18px; left: 18px; z-index: 3;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; line-height: 1.7; color: rgba(255, 255, 255, .72);
+    background: rgba(6, 8, 10, .92); border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 10px; padding: 12px 14px; min-width: 210px;
+    backdrop-filter: blur(10px); box-shadow: 0 8px 28px rgba(0,0,0,.5);
+  }
+  .debug h2 { margin: 0 0 8px; font-size: 10px; letter-spacing: .14em;
+              text-transform: uppercase; color: rgba(255, 255, 255, .45) }
+  .debug .row { display: flex; justify-content: space-between; gap: 18px }
+  .debug .row span:last-child { font-variant-numeric: tabular-nums; color: #fff }
+
+  @media (prefers-reduced-motion: reduce) { .hint { transition: none } }
+</style>
+</head>
+<body>
+  <div class="backdrop"></div>
+  <div class="scrim"></div>
+  <div class="loader">
+    ${anim.markSvg(config, "scatter-mark")}
+  </div>
+
+  <div class="hint" id="hint">
+    <b>${esc(presetId)}</b> &nbsp;&middot;&nbsp; press 1&ndash;9 to compare &nbsp;&middot;&nbsp; d for detail
+  </div>
+
+  ${debug ? `<div class="debug">
+    <h2>${esc(presetId)}${id && id !== presetId ? " &middot; " + esc(id) : ""}</h2>
+    <div class="row"><span>cycle</span><span>${cycle}ms</span></div>
+    ${rows.map(r => `<div class="row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("\n    ")}
+  </div>` : ""}
+
+<script>
+  var PRESETS = ${JSON.stringify(presetLinks)};   // 1-4 pulse, 5-8 orbit
+  var hint = document.getElementById("hint");
+  var timer = setTimeout(function () { hint.classList.add("gone"); }, 4000);
+
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var n = parseInt(e.key, 10);
+    if (n >= 1 && n <= PRESETS.length) {
+      location.href = "/test/" + PRESETS[n - 1] + location.search;
+      return;
+    }
+    if (e.key === "d" || e.key === "D") {
+      var u = new URL(location.href);
+      if (u.searchParams.get("debug")) u.searchParams.delete("debug");
+      else u.searchParams.set("debug", "1");
+      location.href = u.toString();
+      return;
+    }
+    if (e.key === "h" || e.key === "H") {
+      clearTimeout(timer);
+      hint.classList.toggle("gone");
+    }
+  });
+</script>
+</body>
+</html>`;
+}
+
+function indexPage() {
+  const card = ([id, c]) => {
+    const cycle = anim.cycleOf(c);
+    const rows = /^(roll|smear|drop)$/.test(c.mode)
+      ? [["cycle", `${cycle}ms`], ["one go", `${anim.goDeg(c)}&deg;`],
+         ["spin", `${c.rollMs}ms`],
+         c.mode === "smear" ? ["squash", `${Math.round(c.flattenCircle*100)}/${Math.round(c.flattenOval*100)}%`]
+         : c.mode === "drop" ? ["tail", `${Math.round(c.dropAmt*100)}%`]
+                            : ["rolls", `${c.rollCount}`]]
+      : c.mode === "cube"
+      ? [["cycle", `${cycle}ms`], ["rolls", `${c.steps}`],
+         ["per roll", `${c.stepMs}ms`], ["tuck", `${Math.round(c.tuck * 100)}%`]]
+      : c.mode === "orbit"
+      ? [["cycle", `${cycle}ms`], ["spin", `${c.turns * 360}&deg;`],
+         ["push", `${c.push} units`], ["wind back", `${c.windup}&deg;`]]
+      : [["cycle", `${cycle}ms`], ["pulse", `${c.pulse}ms`],
+         ["travel", `${c.travel}ms`], ["min scale", `${c.min}`]];
+    return `<a class="card" href="/test/${id}">
+      <h2>${id}</h2>
+      <dl>${rows.map(r => `<div><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join("")}</dl>
+    </a>`;
+  };
+  const cards = Object.entries(anim.PRESETS).map(card).join("\n");
+  const orbitCards = Object.entries(anim.ORBIT_PRESETS).map(card).join("\n");
+  const cubeCards = Object.entries(anim.CUBE_PRESETS).map(card).join("\n");
+  const rollCards = Object.entries(anim.ROLL_PRESETS).map(card).join("\n");
+  const smearCards = Object.entries(anim.SMEAR_PRESETS).map(card).join("\n");
+  const dropCards = Object.entries(anim.DROP_PRESETS).map(card).join("\n");
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scatter loading screen</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;padding:56px 28px;background:#0b0d0f;color:#e8ebef;
+       font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:860px;margin:0 auto}
+  h1{margin:0 0 6px;font-size:30px;letter-spacing:-.02em}
+  h3{margin:26px 0 12px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7c8794;
+     font-weight:500}
+  h3:first-of-type{margin-top:0}
+  p.lede{margin:0 0 34px;color:#98a2ae;max-width:60ch;line-height:1.6}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;
+       background:#171c22;border:1px solid #262e36;border-radius:5px;padding:1px 6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+  .card{display:block;padding:18px;border:1px solid #262e36;border-radius:12px;
+        background:#12171c;text-decoration:none;color:inherit;transition:border-color .15s,background .15s}
+  .card:hover{border-color:#e5a040;background:#161c22}
+  .card h2{margin:0 0 12px;font-size:15px;text-transform:capitalize;color:#e5a040}
+  dl{margin:0;display:flex;flex-direction:column;gap:5px}
+  dl div{display:flex;justify-content:space-between;font-size:12px}
+  dt{color:#7c8794}
+  dd{margin:0;font-variant-numeric:tabular-nums}
+  .more{margin-top:34px;padding-top:22px;border-top:1px solid #1e252c;color:#98a2ae;
+        font-size:14px;line-height:1.8}
+  .more a{color:#e5a040}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Scatter loading screen</h1>
+  <p class="lede">The app screenshot behind a 50% black scrim, with the pulse wave centred on top.
+     Each variant is a route &mdash; open one and press a number key to flip between them
+     without leaving the page.</p>
+  <h3>Pulse wave</h3>
+  <div class="grid">${cards}</div>
+  <h3>Orbit spin</h3>
+  <div class="grid">${orbitCards}</div>
+  <h3>Cube tumble</h3>
+  <div class="grid">${cubeCards}</div>
+  <h3>Corner roll</h3>
+  <div class="grid">${rollCards}</div>
+  <h3>Smear</h3>
+  <div class="grid">${smearCards}</div>
+  <h3>Teardrop</h3>
+  <div class="grid">${dropCards}</div>
+  <div class="more">
+    Any other id works too &mdash; <code>/test/round-8817</code> renders the default preset for an
+    opaque id, and <code>?preset=snap</code> picks a different one.<br>
+    Tune live in the <a href="/workbench">workbench</a>, or override inline:
+    <code>/test/pulse?min=0.9&amp;travel=900&amp;debug=1</code>
+  </div>
+</div>
+</body>
+</html>`;
+}
+
+/* --------------------------------------------------------------- server */
+
+function serveStatic(res, urlPath) {
+  const rel = decodeURIComponent(urlPath.replace(/^\/+/, ""));
+  const full = path.join(ROOT, rel);
+  if (!full.startsWith(ROOT + path.sep)) return send(res, 403, "text/plain", "Forbidden");
+  fs.readFile(full, (err, buf) => {
+    if (err) return send(res, 404, "text/plain", "Not found");
+    send(res, 200, MIME[path.extname(full).toLowerCase()] || "application/octet-stream", buf);
+  });
+}
+
+function send(res, code, type, body) {
+  res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" });
+  res.end(body);
+}
+
+http.createServer((req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const p = url.pathname.replace(/\/+$/, "") || "/";
+  const q = Object.fromEntries(url.searchParams);
+
+  if (p === "/") return send(res, 200, MIME[".html"], indexPage());
+
+  if (p === "/test" || p.startsWith("/test/")) {
+    const id = p === "/test" ? "" : decodeURIComponent(p.slice("/test/".length));
+    // :id selects a preset when it names one; otherwise it is an opaque id.
+    const presetId = ALL_PRESETS[id] ? id
+      : (ALL_PRESETS[q.preset] ? q.preset
+        : (q.mode === "drop" ? "drop" : q.mode === "smear" ? "smear" : q.mode === "roll" ? "roll" : q.mode === "cube" ? "tumble"
+          : q.mode === "orbit" ? "bloom" : anim.DEFAULT_PRESET));
+    const config = anim.resolveConfig(presetId, q);
+    return send(res, 200, MIME[".html"],
+      loadingPage({ id, presetId, config, debug: q.debug === "1" || q.debug === "true" }));
+  }
+
+  if (p === "/workbench") return serveStatic(res, "/scatter-pulse.html");
+  if (p.startsWith("/public/")) return serveStatic(res, p);
+
+  send(res, 404, MIME[".html"],
+    `<body style="background:#0b0d0f;color:#98a2ae;font-family:system-ui;padding:60px">
+       <h1 style="color:#e8ebef">404</h1><p>Try <a style="color:#e5a040" href="/">/</a>
+       or <a style="color:#e5a040" href="/test/pulse">/test/pulse</a>.</p></body>`);
+}).listen(PORT, () => {
+  console.log(`Scatter loading screen  ->  http://localhost:${PORT}`);
+  console.log(`  /                  variants`);
+  console.log(`  /test/pulse        loading screen`);
+  console.log(`  /test/round-8817   opaque id, default preset`);
+  console.log(`  /workbench         tuning workbench`);
+});
