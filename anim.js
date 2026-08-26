@@ -306,7 +306,10 @@ const CORE_ROUND = 1.0, CORE_HLEN = 0.44, CORE_TIP_OUT = 0.24, CORE_SIDE_OUT = 0
 /* the core also draws in and flattens further as it morphs */
 const CORE_SHRINK = 0.16, CORE_SHORT = 0.20;
 
-function dropPath(key, m, stretch, tailOverride) {
+/* shift rotates which anchor the path starts on. Reversing the travel puts the
+   tail on the opposite anchor, so the emitted order has to rotate with it - or
+   the two directions would interpolate through each other at the turnaround. */
+function dropPath(key, m, stretch, tailOverride, shift = 0, squash = 1) {
   const E = ELLIPSE[key];
   const isCore = key === "core";
   const round = isCore ? CORE_ROUND : ROUND;
@@ -314,8 +317,10 @@ function dropPath(key, m, stretch, tailOverride) {
   const tipOut = isCore ? CORE_TIP_OUT : TIP_OUT;
   const sideOut = isCore ? CORE_SIDE_OUT : SIDE_OUT;
   const narrow = isCore ? CORE_NARROW : NARROW;
-  const shrink = isCore ? 1 - CORE_SHRINK * m : 1;
-  const shortF = isCore ? 1 - CORE_SHORT * m : 1;
+  /* how far the proportions go, as opposed to how far the silhouette goes */
+  const ms = m * squash;
+  const shrink = isCore ? 1 - CORE_SHRINK * ms : 1;
+  const shortF = isCore ? 1 - CORE_SHORT * ms : 1;
   const tailVal = typeof tailOverride === "number" ? tailOverride : TAIL_DEG[key];
   const psi = E.psi * RAD, beta = tailVal * RAD;
   const u = [Math.cos(psi), Math.sin(psi)], v = [-Math.sin(psi), Math.cos(psi)];
@@ -370,13 +375,14 @@ function dropPath(key, m, stretch, tailOverride) {
   const st = p => {
     const d = sub2(p, C);
     const al = d[0]*fwd[0] + d[1]*fwd[1], ac = d[0]*side[0] + d[1]*side[1];
-    const a2 = al * (1 + stretch * m) * shrink;
-    const c3 = ac * (1 - narrow * m) * shortF * shrink;
+    const a2 = al * (1 + stretch * ms) * shrink;
+    const c3 = ac * (1 - narrow * ms) * shortF * shrink;
     return [C[0] + fwd[0]*a2 + side[0]*c3, C[1] + fwd[1]*a2 + side[1]*c3];
   };
 
-  const n = x => x.toFixed(3);
-  const AA = an.map(st), C1 = c1.map(st), C2 = c2.map(st);
+  const n = x => { const v = x.toFixed(3); return v === "-0.000" ? "0.000" : v; };
+  const roll = a => a.map((_, i) => a[(i + shift) % 4]);
+  const AA = roll(an).map(st), C1 = roll(c1).map(st), C2 = roll(c2).map(st);
   let d = `M${n(AA[0][0])} ${n(AA[0][1])}`;
   for (let i = 0; i < 4; i++) {
     const j = (i + 1) % 4;
@@ -492,6 +498,326 @@ function smearKeyframes(c, suffix = "") {
     out.push(`@keyframes smear_${d.key}${suffix} {\n${rows.join("\n")}\n}`);
   }
   return out.join("\n\n");
+}
+
+/* ----------------------------------------------------------------- dash */
+
+/* The teardrop, but the mark travels. It rolls away to the right at speed,
+   hangs there a beat, then rolls slowly back to where it started.
+ *
+ * Rotation and travel are driven by ONE eased progress, which is what makes it
+ * roll rather than slide. Distance is set to match: a disc of radius r turning
+ * theta covers theta*r, and the mark's radius is half its width, so a 240 deg
+ * go should travel 4.18879 * 0.5 = 2.09 widths. That is the default.
+ *
+ * The return runs backwards, so the drops have to lead with the other end. The
+ * morph is driven by the SIGNED speed through a trailing average: it crosses
+ * zero on its own at the turnaround, and the dots are round at that instant, so
+ * the flip costs nothing. */
+const DASH_PRESETS = {
+  dash:  { mode:"dash", rollCount:3, rollMs:1100, rollBack:12, rollOver:14, dashX:3.1416,
+           dashPause:140, dashBackMs:2100, dashHold:520,
+           dropAmt:0.95, dropStretch:0.20, liquid:0.60, coreBack:0.45, coreBackSquash:0.45, dashCentre:1 },
+  fling: { mode:"dash", rollCount:3, rollMs:560, rollBack:16, rollOver:20, dashX:3.1416,
+           dashPause:180, dashBackMs:1900, dashHold:520,
+           dropAmt:0.80, dropStretch:0.22, liquid:0.45, coreBack:0.35, coreBackSquash:0.45, dashCentre:1 },
+  amble: { mode:"dash", rollCount:2, rollMs:820, rollBack:8,  rollOver:10, dashX:2.0944,
+           dashPause:220, dashBackMs:2200, dashHold:640,
+           dropAmt:0.50, dropStretch:0.10, liquid:0.80, coreBack:0.55, coreBackSquash:0.5, dashCentre:1 },
+  yoyo:  { mode:"dash", rollCount:2, rollMs:520, rollBack:18, rollOver:22, dashX:2.0944,
+           dashPause:90,  dashBackMs:900,  dashHold:420,
+           dropAmt:0.70, dropStretch:0.18, liquid:0.50, coreBack:0.30, coreBackSquash:0.45, dashCentre:1 }
+};
+
+function dashPhases(c) {
+  const outEnd = c.rollMs;
+  const pauseEnd = outEnd + c.dashPause;
+  const backEnd = pauseEnd + c.dashBackMs;
+  return { outEnd, pauseEnd, backEnd, cycle: backEnd + c.dashHold };
+}
+
+/** 0 = home, 1 = all the way out. Both the turn and the travel read from this. */
+function dashProgress(tm, c) {
+  const q = dashPhases(c);
+  if (tm <= 0) return 0;
+  if (tm < q.outEnd) return rollEaseAt(tm / c.rollMs, c);   /* wind back, drive, settle */
+  if (tm < q.pauseEnd) return 1;
+  if (tm < q.backEnd) return 1 - smoother((tm - q.pauseEnd) / c.dashBackMs);
+  return 0;
+}
+
+const dashRotation = (tm, c) => goDeg(c) * dashProgress(tm, c);
+
+/** Distance from home, in mark widths, so it scales with the drawn size. */
+const dashTravel = (tm, c) => c.dashX * dashProgress(tm, c);
+
+/**
+ * The mark only ever travels one way, so anchoring it at home would put the
+ * whole animation to the right of wherever it is placed. This slides it back by
+ * half the sweep, which centres the motion instead of its resting position:
+ * it starts left of centre, crosses it, and comes back. `dashCentre` 0 anchors
+ * at home again.
+ */
+function dashOffset(c) {
+  if (!(c.dashCentre > 0)) return 0;
+  const q = dashPhases(c);
+  let lo = 0, hi = 0;
+  for (let i = 0; i <= 600; i++) {
+    const x = dashTravel((i / 600) * q.cycle, c);
+    if (x < lo) lo = x;
+    if (x > hi) hi = x;
+  }
+  /* the core is the mark's visual centre, and it is not the box's centre */
+  return c.dashCentre * ((lo + hi) / 2 + (ELLIPSE.core.cx / 25 - 0.5));
+}
+
+/** Where the mark is actually drawn. Pass `off` to avoid re-solving it. */
+const dashShift = (tm, c, off) => dashTravel(tm, c) - (off === undefined ? dashOffset(c) : off);
+
+/* Signed, unlike the roll's: the sign is what tells the drops which way round
+   to point. Small h because the release is a deliberate velocity jump. */
+function dashSpeedAt(tm, c) {
+  const h = 0.4;
+  return (dashRotation(tm + h, c) - dashRotation(tm - h, c)) / (2 * h);
+}
+
+function dashPeakSpeed(c) {
+  const q = dashPhases(c);
+  let m = 0;
+  for (let i = 0; i <= 600; i++) m = Math.max(m, Math.abs(dashSpeedAt((i / 600) * q.cycle, c)));
+  return m || 1;
+}
+
+/* Trailing average of the signed speed: the shape answers just after the
+   motion, and swaps ends by passing through round rather than by switching. */
+function dashMorphAt(tm, peak, c) {
+  const w = c.liquid * 0.45 * c.rollMs;
+  if (w < 1) return dashSpeedAt(tm, c) / peak;
+  const n = 13;
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += dashSpeedAt(Math.max(0, tm - (i / (n - 1)) * w), c);
+  return (sum / n) / peak;
+}
+
+/**
+ * Peak of the morph driver during the roll home, on its own scale.
+ *
+ * Coming home is slow, so speed alone leaves everything nearly round. The core
+ * is normalised against this instead of against the drive's peak, which is what
+ * lets it hold a shape on the way back without any of it being faked: the
+ * return's own speed profile rises and falls, so the envelope is still 0 -> 1
+ * -> 0 and the core is round at both ends.
+ */
+function dashBackPeak(c, peak) {
+  const q = dashPhases(c);
+  let m = 0;
+  for (let i = 0; i <= 300; i++) {
+    const tm = q.pauseEnd + (i / 300) * (q.cycle - q.pauseEnd);
+    m = Math.max(m, Math.abs(dashMorphAt(tm, peak, c)));
+  }
+  return m || 1;
+}
+
+/**
+ * One dot's shape at one instant: how deep the morph is, and which way the drop
+ * points. The keyframes and the extent bound both read it from here, so what is
+ * drawn and what is measured cannot drift apart.
+ */
+function dashShapeAt(key, sv, backAvg, c) {
+  const back = sv < 0;                      /* rolling home */
+  let m = c.dropAmt * Math.abs(sv), squash = 1;
+  if (back && key === "core" && c.coreBack > 0) {
+    m = Math.max(m, c.coreBack * backAvg);
+    /* Coming home it should read as a drop, not as a squashed one: the tail and
+       the lead stay at full depth, the thinning is dialled back. */
+    if (c.coreBackSquash != null) squash = c.coreBackSquash;
+  }
+  return { m, squash, tail: back ? TAIL_DEG[key] + 180 : TAIL_DEG[key], shift: back ? 2 : 0 };
+}
+
+/** Dense through the drive, lighter through the long slow return. */
+function dashSampleTimes(c) {
+  const q = dashPhases(c);
+  const release = (c.rollBack > 0.000001 ? 0.18 : 0) * c.rollMs;
+  const lag = c.liquid * 0.45 * c.rollMs;      /* the shape keeps moving this long after */
+  const times = ramp(0, q.outEnd, 70)
+    .concat(ramp(release, release + 0.12 * c.rollMs, 10))
+    .concat(ramp(q.outEnd, Math.min(q.cycle, q.outEnd + lag), 10))
+    .concat(ramp(q.pauseEnd, q.backEnd, 44))
+    .concat(ramp(q.backEnd, Math.min(q.cycle, q.backEnd + lag), 8))
+    .concat([q.pauseEnd, q.cycle]);
+
+  const seen = new Set(), uniq = [];
+  for (const t of times.sort((a, b) => a - b)) {
+    const tm = Math.min(t, q.cycle), k = tm.toFixed(2);
+    if (!seen.has(k)) { seen.add(k); uniq.push(tm); }
+  }
+  return uniq;
+}
+
+/**
+ * How much room the mark needs, in multiples of its own width.
+ *
+ * Travel is the easy half. The other half is that a spinning mark sweeps a
+ * disc, not its own box, and the drops grow tips as they morph - so the radius
+ * is measured off the generated paths themselves, at every sampled instant.
+ * Anchors and control points bound a bezier, so the furthest of those from the
+ * spin origin is a safe bound on the ink.
+ */
+function dashExtent(c) {
+  const q = dashPhases(c), peak = dashPeakSpeed(c), off = dashOffset(c);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i <= 600; i++) {
+    const x = dashShift((i / 600) * q.cycle, c, off);
+    if (x < lo) lo = x;
+    if (x > hi) hi = x;
+  }
+
+  const ox = ELLIPSE.core.cx, oy = ELLIPSE.core.cy;   /* the mark turns about the core */
+  const backPeak = dashBackPeak(c, peak);
+  let r = 0;
+  for (const tm of dashSampleTimes(c)) {
+    const sv = dashMorphAt(tm, peak, c);
+    const backAvg = sv < 0 ? Math.min(1, Math.abs(sv) / backPeak) : 0;
+    for (const d of DOTS) {
+      const sh = dashShapeAt(d.key, sv, backAvg, c);
+      const path = dropPath(d.key, sh.m, c.dropStretch, sh.tail, sh.shift, sh.squash);
+      const n = path.match(/-?\d+\.?\d*/g).map(Number);
+      for (let i = 0; i + 1 < n.length; i += 2)
+        r = Math.max(r, Math.hypot(n[i] - ox, n[i + 1] - oy));
+    }
+  }
+  /* the viewBox is 25 wide and maps to the mark's width, so units -> widths */
+  const radius = r / 25;
+  /* Where the mark's own left edge sits inside that box: the ink is centred on
+     the core, and the core is not the middle of the mark's box. */
+  const lead = radius - ELLIPSE.core.cx / 25 - lo;
+  return { lo, hi, radius, lead, travel: hi - lo, span: (hi - lo) + 2 * radius };
+}
+
+function dashKeyframes(c, suffix = "") {
+  const q = dashPhases(c), peak = dashPeakSpeed(c), times = dashSampleTimes(c);
+  const backPeak = dashBackPeak(c, peak);
+  const pct = tm => (tm / q.cycle * 100).toFixed(3);
+  /* the driver depends only on the instant, so sample it once, not once per dot */
+  const frames = times.map(tm => {
+    const sv = dashMorphAt(tm, peak, c);
+    return { tm, sv, backAvg: sv < 0 ? Math.min(1, Math.abs(sv) / backPeak) : 0 };
+  });
+
+  /* translate then rotate: the mark turns in its own space and is carried. */
+  const off = dashOffset(c);
+  const out = [`@keyframes dashRoll${suffix} {\n` + times.map(tm =>
+    `  ${pct(tm)}% { transform: translateX(${(dashShift(tm, c, off) * 100).toFixed(3)}%)`
+    + ` rotate(${dashRotation(tm, c).toFixed(3)}deg) }`).join("\n") + "\n}"];
+
+  for (const d of DOTS) {
+    const rows = frames.map(f => {
+      const sh = dashShapeAt(d.key, f.sv, f.backAvg, c);
+      return `  ${pct(f.tm)}% { d: path("`
+        + dropPath(d.key, sh.m, c.dropStretch, sh.tail, sh.shift, sh.squash) + `") }`;
+    });
+    out.push(`@keyframes dash_${d.key}${suffix} {\n${rows.join("\n")}\n}`);
+  }
+
+  /* The core holds its orientation: same sample grid, so the angles cancel at
+     every instant rather than only at the keyframes. */
+  out.push(`@keyframes dashRollInv${suffix} {\n` + times.map(tm =>
+    `  ${pct(tm)}% { transform: rotate(${(-dashRotation(tm, c)).toFixed(3)}deg) }`).join("\n") + "\n}");
+  return out.join("\n\n");
+}
+
+
+/* The dash, with a line on the ground under it. The head of the line is pinned
+   to the mark's core; the tail is where the core WAS, `trailLag` ago. So the
+   trail is long exactly when the mark is fast and collapses to nothing when it
+   stops - it is the motion drawn out, not a decoration bolted on.
+   Both ends read from dashShift, so the line cannot drift off the mark. */
+const TRAIL_PRESETS = {
+  track: { mode:"dash", rollCount:5, rollMs:1500, rollBack:12, rollOver:14, dashX:5.2360,
+           dashPause:140, dashBackMs:2200, dashHold:460,
+           dropAmt:0.95, dropStretch:0.20, liquid:0.60, coreBack:0.45, coreBackSquash:0.45,
+           dashCentre:1, trail:4, trailLag:160, trailShift:-10, trailGap:-6, trailRadius:1 },
+  streak:{ mode:"dash", rollCount:3, rollMs:900, rollBack:14, rollOver:18, dashX:3.1416,
+           dashPause:120, dashBackMs:1800, dashHold:460,
+           dropAmt:1.00, dropStretch:0.22, liquid:0.50, coreBack:0.40, coreBackSquash:0.45,
+           dashCentre:1, trail:4, trailLag:280, trailShift:-10, trailGap:-6, trailRadius:1 }
+};
+
+/** The core's resting spot across the mark's own box - where the line is pinned. */
+const CORE_X = ELLIPSE.core.cx / 25;
+const CORE_BOTTOM = ELLIPSE.core.cy / 25;   /* the line sits under this */
+
+/**
+ * Trail geometry at one instant, in mark widths.
+ *
+ * The bar is one mark wide with its origin on its left edge, so `translateX(h)
+ * scaleX(k)` lays it from h to h + k. Pinning the origin to the head keeps that
+ * end under the mark, and because k is never positive the bar always mirrors
+ * about that origin - which carries the gradient with it, so "to right" runs
+ * head to tail no matter which way round the bar sits.
+ *
+ * k is clamped at 0, so the line only ever reaches back to the LEFT - it belongs
+ * to the outward roll and there is none on the way home.
+ *
+ * The clamp is not what removes it, though. The drive decelerates the whole way
+ * in, so the tail closes on the head and the line has already faded to nothing
+ * around 950ms - before the mark even stops, let alone turns round. The clamp
+ * only holds it there.
+ */
+function dashTrailAt(tm, c, off) {
+  const head = CORE_X + dashShift(tm, c, off);
+  const tail = CORE_X + dashShift(Math.max(0, tm - c.trailLag), c, off);
+  return { head, k: Math.min(0, tail - head) };
+}
+
+function dashTrailKeyframes(c, suffix = "") {
+  const q = dashPhases(c), off = dashOffset(c);
+  /* the tail reads the motion `trailLag` late, so the grid needs those instants too */
+  const base = dashSampleTimes(c);
+  const seen = new Set(), times = [];
+  for (const t of base.concat(base.map(t => t + c.trailLag)).sort((a, b) => a - b)) {
+    const tm = Math.min(t, q.cycle), k = tm.toFixed(2);
+    if (!seen.has(k)) { seen.add(k); times.push(tm); }
+  }
+  const rows = times.map(tm => {
+    const { head, k } = dashTrailAt(tm, c, off);
+    return `  ${(tm / q.cycle * 100).toFixed(3)}% { transform: `
+      + `translateX(${(head * 100).toFixed(3)}%) scaleX(${k.toFixed(4)}) }`;
+  });
+  return `@keyframes dashTrail${suffix} {\n${rows.join("\n")}\n}`;
+}
+
+/** How far the line reaches behind the mark at its longest, in mark widths. */
+function dashTrailReach(c) {
+  const q = dashPhases(c), off = dashOffset(c);
+  let m = 0;
+  for (let i = 0; i <= 800; i++)
+    m = Math.max(m, Math.abs(dashTrailAt((i / 800) * q.cycle, c, off).k));
+  return m;
+}
+
+/** Static rules for the trail and the wrapper that positions it. */
+function trailCss(c, className, suffix = "", scope = "") {
+  const S = scope ? scope + " " : "";
+  const rig = `${S}.${className}-rig`, bar = `${S}.${className}-trail`;
+  return [
+    `${rig} { position: relative; display: inline-block; line-height: 0 }`,
+    `${bar} {`,
+    `  display: block; position: absolute; left: ${c.trailShift || 0}%;`,
+    `  width: 100%; height: ${c.trail}px;`,
+    /* the mark's ink reaches exactly here, so gap 0 puts the line against it */
+    `  top: calc(${((CORE_BOTTOM + 0.4961) * 100).toFixed(2)}% `
+      + `${(c.trailGap || 0) < 0 ? "-" : "+"} ${Math.abs(c.trailGap || 0)}px);`,
+    `  border-radius: ${c.trailRadius == null ? 1 : c.trailRadius}px;`,
+    `  transform-origin: 0 50%;`,
+    `  background: linear-gradient(to right,`,
+    `    var(--trail-color, #fff), var(--trail-fade, rgba(255, 255, 255, 0)));`,
+    `  pointer-events: none; will-change: transform;`,
+    `  animation: dashTrail${suffix} ${cycleOf(c)}ms linear infinite both;`,
+    `}`,
+    `@media (prefers-reduced-motion: reduce) { ${bar} { animation: none; opacity: 0 } }`
+  ].join("\n");
 }
 
 /* ----------------------------------------------------------------- cube */
@@ -673,17 +999,30 @@ function keyframes(c, name = "scatterPulse", key = null) {
 
 /** Inline <svg> for the mark, with each dot carrying its own delay. */
 function markSvg(c, className = "scatter-mark") {
-  const { delays } = timing(c);
+  /* Only the pulse staggers its dots; every other mode drives them off one clock. */
+  const delays = c.mode ? {} : timing(c).delays;
   const paths = DOTS.map(
     d => `    <path class="dot" data-key="${d.key}"`
-       + (c.mode === "orbit" ? "" : ` style="--delay:${delays[d.key]}ms"`)
+       + (c.mode ? "" : ` style="--delay:${delays[d.key]}ms"`)
        + ` d="${d.d}"/>`
   ).join("\n");
-  return `<svg class="${className}" viewBox="0 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg"\n`
+  const svg = `<svg class="${className}" viewBox="0 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg"\n`
     + `     role="img" aria-label="Loading">\n${paths}\n  </svg>`;
+  if (!(c.trail > 0)) return svg;
+  /* the wrapper is sized by the mark, so the line can be laid out in mark widths */
+  return `<span class="${className}-rig">${svg}`
+    + `<i class="${className}-trail" aria-hidden="true"></i></span>`;
+}
+
+/** How wide to draw the mark: the further a look travels, the smaller it goes. */
+function markWidthCss(c) {
+  if (c.trail) return "clamp(58px, 6.6vw, 104px)";      /* rolls furthest of the lot */
+  if (c.mode === "dash") return "clamp(76px, 8.8vw, 140px)";
+  return "clamp(100px, 11.4vw, 180px)";
 }
 
 function cycleOf(c) {
+  if (c.mode === "dash") return dashPhases(c).cycle;
   if (/^(roll|smear|drop)$/.test(c.mode)) return rollPhases(c).cycle;
   if (c.mode === "cube") return cubePhases(c).cycle;
   if (c.mode === "orbit") return orbitPhases(c).cycle;
@@ -716,6 +1055,26 @@ function animCss(c, markSel, dotSel, suffix = "", scope = "") {
           + ` transform: none }`)
     ];
     return rules.join("\n") + "\n\n" + dropKeyframes(c, suffix);
+  }
+  if (c.mode === "dash") {
+    const rules = [
+      `${S}${markSel} { transform-origin: ${SPIN_ORIGIN};`
+        + ` animation: dashRoll${suffix} ${cycle}ms linear infinite both }`,
+      `${S}${dotSel} { animation-duration: ${cycle}ms;`
+        + ` animation-delay: 0ms; animation-timing-function: linear;`
+        + ` animation-iteration-count: infinite; animation-fill-mode: both }`,
+      ...DOTS.map(d => d.key === "core"
+        ? `${S}${dotSel}[data-key="core"] { animation-name: dash_core${suffix}, dashRollInv${suffix};`
+          + ` animation-duration: ${cycle}ms, ${cycle}ms }`
+        : `${S}${dotSel}[data-key="${d.key}"] { animation-name: dash_${d.key}${suffix};`
+          + ` transform: none }`)
+    ];
+    let css = rules.join("\n") + "\n\n" + dashKeyframes(c, suffix);
+    if (c.trail > 0) {
+      const cls = markSel.replace(/^.*\./, "");     /* ".mark" -> "mark" */
+      css += "\n\n" + trailCss(c, cls, suffix, scope) + "\n\n" + dashTrailKeyframes(c, suffix);
+    }
+    return css;
   }
   if (c.mode === "smear") {
     const rules = [
@@ -789,6 +1148,26 @@ ${animCss(c, "." + className, "." + className + " .dot")}`;
 
 /** Merge a preset with ?query overrides, keeping every value in range. */
 function resolveConfig(id, query = {}) {
+  const dashTable = { ...DASH_PRESETS, ...TRAIL_PRESETS };
+  const wantsDash = dashTable[id] || query.mode === "dash" || dashTable[query.preset];
+  if (wantsDash) {
+    const c = { ...(dashTable[id] || dashTable[query.preset] || DASH_PRESETS.dash) };
+    const map = {
+      rollMs: [80, 4000, true], rollBack: [0, 90, true], rollOver: [0, 90, true],
+      rollCount: [1, 12, true], dashX: [0, 8, false], dashPause: [0, 3000, true],
+      dashBackMs: [120, 6000, true], dashHold: [0, 4000, true],
+      dropAmt: [0, 1.2, false], dropStretch: [0, 0.6, false], liquid: [0, 1, false],
+      coreBack: [0, 1.2, false], coreBackSquash: [0, 1, false], dashCentre: [0, 1, false],
+      trail: [0, 24, true], trailLag: [0, 2000, true], trailGap: [-40, 40, true],
+      trailRadius: [0, 12, true], trailShift: [-60, 60, false]
+    };
+    for (const [k, [lo, hi, round]] of Object.entries(map)) {
+      const n = parseFloat(query[k]);
+      if (Number.isFinite(n)) c[k] = round ? Math.round(clamp(n, lo, hi)) : clamp(n, lo, hi);
+    }
+    c.mode = "dash";
+    return c;
+  }
   const wantsSmear = SMEAR_PRESETS[id] || query.mode === "smear" || SMEAR_PRESETS[query.preset];
   const wantsDrop = DROP_PRESETS[id] || query.mode === "drop" || DROP_PRESETS[query.preset];
   const wantsRoll = wantsSmear || wantsDrop || ROLL_PRESETS[id] || query.mode === "roll"
@@ -868,7 +1247,12 @@ function resolveConfig(id, query = {}) {
 }
 
 module.exports = { DOTS, CENTERS, RADIAL, RADIUS, PRESETS, ORBIT_PRESETS, CUBE_PRESETS,
-                   ROLL_PRESETS, SMEAR_PRESETS, DROP_PRESETS, ELLIPSE, TAIL_DEG,
+                   ROLL_PRESETS, SMEAR_PRESETS, DROP_PRESETS, DASH_PRESETS, ELLIPSE, TAIL_DEG,
+                   dashPhases, dashProgress, dashRotation, dashShift, dashSpeedAt,
+                   dashPeakSpeed, dashMorphAt, dashBackPeak, dashShapeAt, dashExtent,
+                   dashTravel, dashOffset, TRAIL_PRESETS, dashTrailAt, dashTrailKeyframes,
+                   dashTrailReach, trailCss, markWidthCss,
+                   dashKeyframes, dashSampleTimes,
                    dropPath, dropKeyframes, morphAt, rollPhases, rollRotation, rollKeyframes,
                    smearKeyframes, rollSpeedAt, rollPeakSpeed, RADIAL_DEG, SHAPE, goDeg,
                    cubePhases, cubeRotation, cubeHop, cubeSquash, cubeTuck, cubeKeyframes,

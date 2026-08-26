@@ -8,11 +8,12 @@
 const fs = require("fs");
 const anim = require("./anim.js");
 
-const BG = process.argv[2] || "/private/tmp/claude-501/-Users-reece-code-work-scatter-logo-animate/76cc08ab-c312-42df-b2c9-26020db71446/scratchpad/bg-small.jpg";
+const BG = process.argv[2] || "public/background-small.jpg";
 const dataUri = "data:image/jpeg;base64," + fs.readFileSync(BG).toString("base64");
 
 const ALL = { ...anim.PRESETS, ...anim.ORBIT_PRESETS, ...anim.CUBE_PRESETS,
-              ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS, ...anim.DROP_PRESETS };
+              ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS, ...anim.DROP_PRESETS,
+              ...anim.DASH_PRESETS, ...anim.TRAIL_PRESETS };
 const ids = Object.keys(ALL);
 
 /* Every preset's keyframes are inlined and scoped to body[data-preset], so
@@ -21,10 +22,17 @@ const blocks = ids.map(id => `/* ---- ${id} ---- */\n`
   + anim.animCss(ALL[id], ".scatter-mark", ".scatter-mark .dot", `_${id}`,
                  `body[data-preset="${id}"]`)).join("\n\n");
 
+/* Mark size is per-look, and the rig/line markup is shared, so both switch with
+   the preset rather than being baked into the markup. */
+const perPreset = ids.map(id =>
+  `body[data-preset="${id}"] .scatter-mark { width: ${anim.markWidthCss(ALL[id])} }`).join("\n");
+
 const meta = ids.map(id => {
   const c = ALL[id];
   const cycle = anim.cycleOf(c);
-  return c.mode === "orbit"
+  return c.mode === "dash"
+    ? `  ${id}: { cycle: ${cycle}, label: "${cycle}ms cycle \\u00b7 ${anim.goDeg(c)}\\u00b0 \\u00b7 ${c.dashX.toFixed(2)} widths${c.trail ? " \\u00b7 " + c.trail + "px line" : ""}" }`
+    : c.mode === "orbit"
     ? `  ${id}: { cycle: ${cycle}, label: "${cycle}ms cycle \\u00b7 ${c.turns * 360}\\u00b0 spin \\u00b7 ${c.push} out" }`
     : c.mode === "cube"
     ? `  ${id}: { cycle: ${cycle}, label: "${cycle}ms cycle \\u00b7 ${c.steps} rolls \\u00b7 ${Math.round(c.tuck * 100)}% tuck" }`
@@ -65,6 +73,11 @@ const html = `<title>Scatter Loading Screen</title>
     transform-box: fill-box; transform-origin: 50% 50%;
     will-change: transform;
   }
+  /* the wrapper is always present; the line only shows for looks that have one */
+  .scatter-mark-rig { position: relative; display: inline-block; line-height: 0 }
+  .scatter-mark-trail { display: none }
+
+${perPreset}
   @media (prefers-reduced-motion: reduce) {
     .scatter-mark, .scatter-mark .dot { animation: none !important }
   }
@@ -101,7 +114,7 @@ ${blocks}
 <div class="backdrop"></div>
 <div class="scrim"></div>
 <div class="loader">
-  ${anim.markSvg(anim.CUBE_PRESETS.tumble, "scatter-mark")}
+  ${anim.markSvg({ ...anim.CUBE_PRESETS.tumble, trail: 4 }, "scatter-mark")}
 </div>
 
 <div class="panel" id="panel">
@@ -151,7 +164,7 @@ ${meta}
   });
 
   var initial = (location.hash || "").slice(1);
-  select(META[initial] ? initial : "drop");
+  select(META[initial] ? initial : "track");
 </script>
 `;
 

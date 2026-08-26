@@ -11,6 +11,7 @@
  *                      - if :id names a preset (pulse|breathe|snap|ripple) it selects it
  *                      - otherwise :id is treated as an opaque id (game, session, round)
  *                        and the preset comes from ?preset=
+ *   /gallery           the shortlist: eight looks side by side
  *   /workbench         the tuning workbench
  *   /public/*          static assets
  *
@@ -21,6 +22,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const anim = require("./anim.js");
+const { galleryPage } = require("./gallery.js");
 
 const PORT = process.env.PORT || 4173;
 const ROOT = __dirname;
@@ -38,7 +40,8 @@ const esc = s => String(s).replace(/[&<>"']/g, ch =>
 /* ---------------------------------------------------------------- pages */
 
 const ALL_PRESETS = { ...anim.PRESETS, ...anim.ORBIT_PRESETS, ...anim.CUBE_PRESETS,
-                      ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS, ...anim.DROP_PRESETS };
+                      ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS, ...anim.DROP_PRESETS,
+                      ...anim.DASH_PRESETS, ...anim.TRAIL_PRESETS };
 
 function loadingPage({ id, presetId, config, debug }) {
   const cycle = anim.cycleOf(config);
@@ -46,7 +49,23 @@ function loadingPage({ id, presetId, config, debug }) {
 
   /* Debug rows differ per mode. */
   let rows;
-  if (/^(roll|smear|drop)$/.test(config.mode)) {
+  if (config.mode === "dash") {
+    const e = anim.dashExtent(config);
+    const d = anim.dashPhases(config);
+    rows = [["travel", `${config.dashX.toFixed(2)} widths`],
+            ["turn", `${anim.goDeg(config)}&deg;`],
+            ["roll out", `${config.rollMs}ms`],
+            ["hang", `${config.dashPause}ms`],
+            ["roll home", `${config.dashBackMs}ms`],
+            ["rest", `${config.dashHold}ms`],
+            ["home at", `${d.backEnd}ms`],
+            ["needs", `${e.span.toFixed(2)}&times; width`],
+            ["tail", `${Math.round(config.dropAmt * 100)}%`],
+            ["liquid lag", `${Math.round(config.liquid * 100)}%`]]
+      .concat(config.trail ? [["line", `${config.trail}px`],
+                             ["line lag", `${config.trailLag}ms`],
+                             ["reaches", `${anim.dashTrailReach(config).toFixed(2)} widths`]] : []);
+  } else if (/^(roll|smear|drop)$/.test(config.mode)) {
     rows = [["turns", `${config.rollCount}`],
             ["one go", `${anim.goDeg(config)}&deg;`],
             ["spin time", `${config.rollMs}ms`],
@@ -120,7 +139,7 @@ function loadingPage({ id, presetId, config, debug }) {
   ${anim.markCss(config, "scatter-mark").split("\n").map(l => "  " + l).join("\n").trim()}
 
   .scatter-mark {
-    width: clamp(100px, 11.4vw, 180px);
+    width: ${anim.markWidthCss(config)};
     height: auto;
     display: block;
     filter: drop-shadow(0 6px 28px rgba(0, 0, 0, .45));
@@ -205,7 +224,12 @@ function loadingPage({ id, presetId, config, debug }) {
 function indexPage() {
   const card = ([id, c]) => {
     const cycle = anim.cycleOf(c);
-    const rows = /^(roll|smear|drop)$/.test(c.mode)
+    const rows = c.mode === "dash"
+      ? [["cycle", `${cycle}ms`], ["travel", `${c.dashX.toFixed(2)} widths`],
+         c.trail ? ["trail", `${c.trail}px &middot; ${c.trailLag}ms`]
+                 : ["turn", `${anim.goDeg(c)}&deg;`],
+         ["needs", `${anim.dashExtent(c).span.toFixed(2)}&times; width`]]
+      : /^(roll|smear|drop)$/.test(c.mode)
       ? [["cycle", `${cycle}ms`], ["one go", `${anim.goDeg(c)}&deg;`],
          ["spin", `${c.rollMs}ms`],
          c.mode === "smear" ? ["squash", `${Math.round(c.flattenCircle*100)}/${Math.round(c.flattenOval*100)}%`]
@@ -230,6 +254,8 @@ function indexPage() {
   const rollCards = Object.entries(anim.ROLL_PRESETS).map(card).join("\n");
   const smearCards = Object.entries(anim.SMEAR_PRESETS).map(card).join("\n");
   const dropCards = Object.entries(anim.DROP_PRESETS).map(card).join("\n");
+  const dashCards = Object.entries(anim.DASH_PRESETS).map(card).join("\n");
+  const trailCards = Object.entries(anim.TRAIL_PRESETS).map(card).join("\n");
 
   return `<!doctype html>
 <html lang="en">
@@ -281,10 +307,15 @@ function indexPage() {
   <div class="grid">${smearCards}</div>
   <h3>Teardrop</h3>
   <div class="grid">${dropCards}</div>
+  <h3>Dash &mdash; teardrop that travels</h3>
+  <div class="grid">${dashCards}</div>
+  <h3>Track &mdash; dash with a line under it</h3>
+  <div class="grid">${trailCards}</div>
   <div class="more">
     Any other id works too &mdash; <code>/test/round-8817</code> renders the default preset for an
     opaque id, and <code>?preset=snap</code> picks a different one.<br>
-    Tune live in the <a href="/workbench">workbench</a>, or override inline:
+    See the <a href="/gallery">shortlist</a> with all eight side by side, tune live in the
+    <a href="/workbench">workbench</a>, or override inline:
     <code>/test/pulse?min=0.9&amp;travel=900&amp;debug=1</code>
   </div>
 </div>
@@ -321,13 +352,14 @@ http.createServer((req, res) => {
     // :id selects a preset when it names one; otherwise it is an opaque id.
     const presetId = ALL_PRESETS[id] ? id
       : (ALL_PRESETS[q.preset] ? q.preset
-        : (q.mode === "drop" ? "drop" : q.mode === "smear" ? "smear" : q.mode === "roll" ? "roll" : q.mode === "cube" ? "tumble"
+        : (q.mode === "dash" ? "dash" : q.mode === "drop" ? "drop" : q.mode === "smear" ? "smear" : q.mode === "roll" ? "roll" : q.mode === "cube" ? "tumble"
           : q.mode === "orbit" ? "bloom" : anim.DEFAULT_PRESET));
     const config = anim.resolveConfig(presetId, q);
     return send(res, 200, MIME[".html"],
       loadingPage({ id, presetId, config, debug: q.debug === "1" || q.debug === "true" }));
   }
 
+  if (p === "/gallery") return send(res, 200, MIME[".html"], galleryPage());
   if (p === "/workbench") return serveStatic(res, "/scatter-pulse.html");
   if (p.startsWith("/public/")) return serveStatic(res, p);
 
@@ -340,5 +372,6 @@ http.createServer((req, res) => {
   console.log(`  /                  variants`);
   console.log(`  /test/pulse        loading screen`);
   console.log(`  /test/round-8817   opaque id, default preset`);
+  console.log(`  /gallery           the shortlist`);
   console.log(`  /workbench         tuning workbench`);
 });

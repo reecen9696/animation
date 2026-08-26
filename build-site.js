@@ -13,11 +13,14 @@ const GROUPS = [
   { name: "Cube",    blurb: "A GameCube-style tumble: tuck in, roll end over end, snap open.", set: anim.CUBE_PRESETS },
   { name: "Roll",    blurb: "One continuous 240° spin with a wind-up and an overshoot.", set: anim.ROLL_PRESETS },
   { name: "Smear",   blurb: "The roll, with the outer dots flattening along their travel.", set: anim.SMEAR_PRESETS },
-  { name: "Teardrop",blurb: "The roll, with every dot morphing into a teardrop as the spin picks up.", set: anim.DROP_PRESETS }
+  { name: "Teardrop",blurb: "The roll, with every dot morphing into a teardrop as the spin picks up.", set: anim.DROP_PRESETS },
+  { name: "Dash",    blurb: "The teardrop, but the mark travels: it rolls off to the right at speed, hangs, then rolls slowly home.", set: anim.DASH_PRESETS },
+  { name: "Track",   blurb: "The dash on a smaller mark, rolled further, with a line trailing under it on the way out.", set: anim.TRAIL_PRESETS }
 ];
 
 const summarise = c => {
   const cycle = anim.cycleOf(c);
+  if (c.mode === "dash")  return `${cycle}ms &middot; ${anim.goDeg(c)}&deg; &middot; ${c.dashX.toFixed(2)} widths`;
   if (c.mode === "drop")  return `${cycle}ms &middot; tail ${Math.round(c.dropAmt * 100)}%`;
   if (c.mode === "smear") return `${cycle}ms &middot; squash ${Math.round(c.flattenCircle * 100)}%`;
   if (c.mode === "roll")  return `${cycle}ms &middot; ${anim.goDeg(c)}&deg;`;
@@ -113,6 +116,10 @@ const html = `<!doctype html>
     <a class="tool" href="loading-screen.html">
       <h3>Loading screen &rarr;</h3>
       <p>All ${GROUPS.reduce((n, g) => n + Object.keys(g.set).length, 0)} variants in context, with a switcher. Press 1&ndash;9 to compare.</p>
+    </a>
+    <a class="tool" href="gallery.html">
+      <h3>Shortlist &rarr;</h3>
+      <p>The looks worth comparing, side by side and running at their real timing.</p>
     </a>
     <a class="tool" href="scatter-pulse.html">
       <h3>Workbench &rarr;</h3>

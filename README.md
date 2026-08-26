@@ -16,6 +16,12 @@ see them in context.
 - **Drop** — the roll, with every dot morphing into a teardrop, fat end leading
   the direction of travel. The centre dot never spins: it just morphs in and out
   with its point held facing left.
+- **Dash** — the teardrop, but the mark travels: it rolls off to the right at
+  speed like a thrown dice, hangs there a beat, then rolls slowly back to where
+  it started. The only look that needs a box wider than the mark.
+- **Track** — the dash on a smaller mark, rolled further (600°, 5.24 widths),
+  with a 4px line tucked into the bottom of it that stretches out behind as it
+  rolls away and shrinks away as it slows. Outward leg only.
 
 ## Run
 
@@ -33,12 +39,14 @@ No dependencies — Node's stdlib only.
 | `/` | Index of the variants |
 | `/test/:id` | Loading screen: app screenshot, 50% black scrim, mark centred on top |
 | `/test` | Same, default preset |
+| `/gallery` | The shortlist: ten looks side by side, each with a way through to `/test` |
 | `/workbench` | The tuning workbench |
 | `/public/*` | Static assets |
 
 `:id` selects a preset when it names one — `pulse`, `breathe`, `snap`, `ripple`
 (pulse), `bloom`, `snappy`, `wide`, `double` (orbit), or `tumble`, `hardware`,
-`quick`, `heavy` (cube), or `roll`, `thud`, `skip`, `lap` (roll).
+`quick`, `heavy` (cube), or `roll`, `thud`, `skip`, `lap` (roll), or `dash`,
+`fling`, `amble`, `yoyo` (dash), or `track`, `streak` (track).
 Any other value is treated as an opaque id — a game, session or round — and the
 preset comes from `?preset=`:
 
@@ -60,6 +68,15 @@ Cube accepts `?mode=cube` plus `steps`, `stepMs`, `hop`, `squash`, `tuck`,
 Roll accepts `?mode=roll` plus `rollCount`, `rollMs`, `rollBack`, `rollOver`,
 `rollHold`. Smear takes the same, plus `flattenCircle` and `flattenOval`. Drop
 takes the same, plus `dropAmt`, `dropStretch` and `liquid`.
+
+Dash accepts `?mode=dash` plus `rollCount`, `rollMs`, `rollBack`, `rollOver`,
+`dashX`, `dashPause`, `dashBackMs`, `dashHold`, `coreBack` (how much shape the
+centre dot keeps on the way home), `coreBackSquash` (how much of that is
+thinning), `dashCentre` (0 anchors at the resting spot instead of centring the
+sweep), and the teardrop's `dropAmt`, `dropStretch` and `liquid`. Add `trail`
+(thickness in px, 0 for none), `trailLag` (how far behind the tail runs) and
+`trailGap` (px from the mark's lowest ink, negative tucks it up into the mark) and
+`trailRadius` and `trailShift` (% of the mark's width, along) for a line under it — `/test/dash?trail=4&trailLag=200` is `track`.
 
 ### From the workbench
 
@@ -149,6 +166,183 @@ The whole go is a single motion in two segments:
 
 The overshoot tension is solved from the requested angle — `4s³/(27(s+1)²) = o`
 gives the `easeOutBack` parameter — so **Over-roll** in degrees is what you get.
+
+## How the dash works
+
+The teardrop roll, carried. The mark rolls away to the right at speed, hangs
+there a beat, then rolls slowly back to where it started.
+
+| Phase | Span, at the `dash` preset | What happens |
+| --- | --- | --- |
+| Roll out | 0–1100ms | Winds back, drives right, over-rolls, settles |
+| Hang | 1100–1240ms | Still, at the far end |
+| Roll home | 1240–3340ms | Rolls back on a smootherstep — the whole way, slowly |
+| Rest | 3340–3860ms | Still, home |
+
+Five things make it work.
+
+**One progress drives both.** Rotation and travel read from the same eased
+value, so the mark cannot slide: at every instant `x / θ` is the same number.
+And the distance is set so that number is the physical one — a disc of radius
+`r` turning `θ` covers `θr`, and the mark's radius is half its width, so a full
+360° turn should travel `6.28319 × 0.5 = 3.1416` widths. That is the default,
+and it measures at **0.000% slip** against a true roll.
+
+**The drops turn around by passing through round.** Coming home the mark spins
+the other way, so the fat end has to lead the opposite end. Rather than switch
+the shape at the turnaround, the morph is driven by the **signed** speed through
+the same trailing average the teardrop already uses — so it crosses zero on its
+own, and the dots are round at the instant the lead swaps. It costs nothing
+because there is nothing to see.
+
+That only works if both directions draw the same path at zero morph, and they
+did not: reversing the tail puts it on the opposite anchor, so the two would
+have interpolated *through* each other and collapsed the dot on the way. The
+path builder now rotates its output order to match, and the two directions agree
+byte for byte at rest — checked for all seven dots, on every preset.
+
+**The core keeps a shape on the way home.** Coming back is slow, and the morph
+is driven by speed, so on the return the drops go almost round — the outer dots
+reach only 30% of their outbound depth, which is right: they are barely moving.
+The centre dot is the exception. It is normalised against the **return's own**
+peak rather than the drive's, so it reaches `coreBack` (45%) of a full morph on
+the way home and reads as a shape rather than a circle. `coreBackSquash` then
+scales back only the *thinning* — the tail and the lead stay at full depth, so
+coming home it reads as a drop rather than as a squashed one.
+
+Nothing about that is faked. The return's speed profile still rises and falls,
+so the envelope is genuinely `0 → 1 → 0`: the core is round at the turnaround,
+tapers through the middle of the journey, and is round again before it lands.
+And because the tail direction follows the sign of the travel, it points **the
+other way** on the way back — the fat end leads left instead of right.
+
+| Centre dot | aspect | point |
+| --- | --- | --- |
+| home | 1.00 | — |
+| rolling out | 1.80 | trails left |
+| rolling home | 1.29 | trails right |
+
+Measured off the live page, not the source: at `t = 3860ms` the path is
+identical to `t = 0`, so the loop closes on the shape as well as the motion.
+
+**It is centred on its motion, not on where it rests.** The mark only ever
+travels one way, so anchoring it at home would put the entire animation to the
+right of wherever it is placed — at ship size that is nearly 600px of drift off
+centre. `dashOffset()` slides the whole thing back by half the sweep, so it
+starts left of centre, crosses it, and comes back.
+
+The offset centres the *ink*, not the element box: the core is the mark's
+visual centre and it sits at 48.82% of the box, not 50%. Measured on the live
+page, the swept band's midpoint lands **0.14px** from the middle of the screen.
+`dashCentre=0` anchors it at home again.
+
+Because it occupies four and a half times its own width, `/test` draws the dash
+smaller than the looks that stay put — `clamp(76px, 8.8vw, 140px)` against the
+usual `clamp(100px, 11.4vw, 180px)`.
+
+**It needs a wider box, and says by how much.** `dashExtent()` returns the room
+required in multiples of the mark's own width. Travel is the easy half; the
+other half is that a spinning mark sweeps a disc, not its box, and the drops
+grow tips as they morph — so the radius is measured off the generated paths
+themselves, at every sampled instant. Anchors and control points bound a bézier,
+so the furthest of those from the spin origin bounds the ink.
+
+| | `dash` |
+| --- | --- |
+| turns | 360°, one whole turn |
+| travels | 3.14 widths right |
+| runs from | −1.67 to 1.70 widths, either side of centre |
+| sweeps | 0.99 widths as it turns |
+| **needs a box** | **4.36× the mark's width** |
+
+Verified in the browser against the real ink — walking every path through its
+screen CTM, rather than unioning axis-aligned boxes around rotated ellipses —
+the bound holds with a couple of pixels of slack each side at ship size.
+`/gallery` draws that box around it as a dashed outline, sized from the same
+number.
+
+A whole turn rather than 240° is not free: 120° is the mark's symmetry step, so
+any multiple lands it back on its own orientation, but 360° is the first one
+that also reads as *one full roll* rather than two-thirds of one.
+
+The core is held upright by `dashRollInv`, the same trick the teardrop uses:
+sampled on the identical grid, so CSS interpolates both as angles and they
+cancel at every instant rather than only at the keyframes.
+
+**Not in the workbench.** The dash lives in `anim.js`, so `/test`, `/gallery`
+and the index all render it — but `scatter-pulse.html` keeps its own copy of the
+maths and has no dash sliders yet. Tune it through the query string.
+
+## How the trail works
+
+`track` is the dash with a 4px line under it, rolled further on a smaller mark:
+**five rolls, 600°, 5.24 widths of travel** over 1500ms, against the dash's three
+rolls and 3.14. 600° is still a multiple of the mark's 120° symmetry step, so it
+lands on its own orientation, and `θr` keeps the distance honest — **0.0002%
+slip**. The whole run is 6.46× the mark's width, so `/test` draws it smaller
+again: `clamp(58px, 6.6vw, 104px)`, which puts the sweep at 667px measured.
+
+The line is the motion drawn out rather than a decoration laid over it:
+
+- **The head is pinned to the mark's centre**, plus `trailShift` (−10%). Both ends
+  read from `dashShift`, the same function that places the mark, so the line
+  cannot drift off it.
+- **The tail is where that centre was, `trailLag` ago (160ms).** So the line is
+  long exactly when the mark is fast — it stretches to **2.24×** the mark's width
+  at the peak of the roll — and collapses to nothing when it stops. Nothing decays
+  it on a timer; it is short because the mark is slow.
+- **There is none on the way home.** The line belongs to the outward roll.
+
+The bar is one mark wide with its origin on its left edge, so `translateX(h)
+scaleX(k)` lays it from `h` to `h + k`. Pinning the origin to the head keeps that
+end under the mark, and `k` is clamped at 0 so the line only ever reaches back to
+the left.
+
+The line is 4px with 1px corners, solid under the mark and fading out to the
+tail. Because `k` is never positive the bar always mirrors about its origin,
+which carries the gradient with it — so `to right` runs head-to-tail no matter
+which way round the bar sits, and one declaration covers it.
+
+It fades to `rgba(255,255,255,0)`, not to `transparent`. `transparent` is
+transparent *black*, so a white bar fading to it dims through grey on the way
+out; dropping the alpha on the same colour keeps it clean.
+
+### Why `trailShift` is a percentage
+
+The head has to stay hidden behind the mark, and that is not a fixed number of
+pixels — it is a fraction of the mark's width, and it moves as the mark turns.
+The line sits near the bottom of the disc, where there is only ink where a dot
+happens to be; between dots the rightmost ink at that height falls back toward
+the centre. Probed at every angle across the cycle, it reaches only **7.9% left
+of the core** at the worst rotation.
+
+At a fixed +6px the head therefore poked out past the dots by up to **14px**, and
+what showed at the end of the roll — when all that was left was the head — was a
+stub sticking out past the bottom circle. At **−10% of the mark's width** it is
+covered at every angle *and* at every size, which a pixel value could not be:
+`/test` draws this mark at 104px and `/gallery` at 96px. Re-probed: **0 frames
+out of 94** with any part of the line past the ink, worst case 2.1px inside it.
+
+The clamp is not what removes it, though. The drive decelerates the whole way in,
+so the tail closes on the head and the line has **already faded to nothing around
+950ms** — before the mark stops at 1100ms, let alone turns round at 1240ms. It
+goes out the way it came in, on the motion; the clamp only holds it at zero.
+
+It sits **tucked into the mark**, not below it. `trailGap` is measured from the
+lowest point the ink reaches — a constant, because the mark sweeps a disc as it
+rolls. At `-6` the line's top edge sits **4.5px inside** that lowest point, so
+the line runs out from under the logo rather than floating beneath it. Positive
+values drop it back down to a floor line.
+
+One gotcha worth recording: `calc(96.95% + -6px)` is a parse error — calc has no
+unary minus after an operator — so the sign is emitted as the operator.
+
+`scaleX` never touches the thickness, so the line is 4px at every instant and at
+every mark size — verified in the browser, not just intended.
+
+A trail needs a sibling to the mark, so `markSvg` wraps the two in a
+`…-rig` span **only** when `trail` is set. Every other look still renders as a
+bare `<svg>`, unchanged.
 
 ## How the smear works
 
