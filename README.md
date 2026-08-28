@@ -39,12 +39,12 @@ No dependencies — Node's stdlib only.
 | `/` | Index of the variants |
 | `/test/:id` | Loading screen: app screenshot, 50% black scrim, mark centred on top |
 | `/test` | Same, default preset |
-| `/gallery` | The shortlist: ten looks side by side, each with a way through to `/test` |
+| `/gallery` | The shortlist: fourteen looks side by side, each with a way through to `/test` |
 | `/workbench` | The tuning workbench |
 | `/public/*` | Static assets |
 
-`:id` selects a preset when it names one — `pulse`, `breathe`, `snap`, `ripple`
-(pulse), `bloom`, `snappy`, `wide`, `double` (orbit), or `tumble`, `hardware`,
+`:id` selects a preset when it names one — `pulse`, `breathe`, `snap`, `ripple`,
+`around`, `circuit`, `spoke`, `bounce` (pulse), `bloom`, `snappy`, `wide`, `double` (orbit), or `tumble`, `hardware`,
 `quick`, `heavy` (cube), or `roll`, `thud`, `skip`, `lap` (roll), or `dash`,
 `fling`, `amble`, `yoyo` (dash), or `track`, `streak` (track).
 Any other value is treated as an opaque id — a game, session or round — and the
@@ -497,3 +497,78 @@ At the default preset (900ms pulse, 620ms travel, 500ms rest → 2020ms cycle):
 
 Pulse (900ms) is longer than travel (620ms), so every dot is still moving when
 the next starts — the overlap is what makes it a wave.
+
+### Four waves that don't run down the diagonal
+
+`around`, `circuit`, `spoke` and `bounce` keep the same curve and the same
+`min`/`dip`/`over`/`pulse`/`rest` knobs; only *when* each dot fires changes.
+
+**`around`** — a lap of the ring instead of a run across it. The preset carries
+its own order, `top → tl → ll → bottom → lr → tr → core`: counter-clockwise from
+the top, down the left, along the bottom, up the right, then down into the
+centre. `travel` is the spread across the whole order, so at 840ms each dot is
+140ms behind the last (640ms pulse, 420ms rest → 1900ms cycle).
+
+**`circuit`** — the same lap, closed and left running. After the top right the
+wave carries on to the top, dives into the core and comes back up to the top,
+which is where the next lap starts:
+`top → tl → ll → bottom → lr → tr → top → core →` straight into the next lap.
+
+Because it never stops, `travel` is one whole lap *including the wrap back to
+the start*, and the eight steps are spread evenly across it — at 1600ms that is
+200ms a step, and the cycle is the lap: 1600ms, no rest.
+
+| Step | Dot | Fires at |
+| --- | --- | --- |
+| 1 | Top | 0ms |
+| 2 | Top left | 200ms |
+| 3 | Lower left | 400ms |
+| 4 | Bottom | 600ms |
+| 5 | Lower right | 800ms |
+| 6 | Top right | 1000ms |
+| 7 | Top | 1200ms |
+| 8 | Core | 1400ms |
+
+Two things fall out of a wave that wraps. The **top fires twice a lap**, 400ms
+apart at the crown, so its pulse is clipped to the gap it has — a dot that fires
+twice in quick succession takes a shorter pulse rather than colliding with
+itself. And the **core's pulse runs off the end** of the lap: it starts at
+1400ms and wants 400ms, so its keyframes are split in two, finishing at the top
+of the next lap. The animation opens on exactly the scale it closes on, so
+there is no seam to see.
+
+**`spoke`** — the same lap, but back to the middle between every dot:
+`top → core → tl → core → ll → core → bottom → core → lr → core → tr → core →`
+and round again. Twelve evenly spaced steps across a 2400ms lap, 200ms apart, so
+the core beats six times to each ring dot's one. Its pulse is clipped to the
+400ms it has between beats, and its last one wraps into the next lap the same
+way `circuit`'s does.
+
+**`bounce`** — the diagonal run out *and* back. The wave crosses top left to
+bottom right, turns at the far corner, and comes home the way it came, so every
+dot but the turning one pulses **twice** a cycle:
+
+| Dot | Offset | Out | Home |
+| --- | --- | --- | --- |
+| Top left | 0.000 | 0ms | 1040ms |
+| Top | 0.112 | 34ms | 1006ms |
+| Lower left | 0.350 | 105ms | 935ms |
+| Core | 0.487 | 146ms | 894ms |
+| Top right | 0.618 | 185ms | 855ms |
+| Bottom | 0.844 | 253ms | 787ms |
+| Lower right | 1.000 | 300ms | — |
+
+The turn is held until the far dot has finished (`travel + pulse`), so a dot's
+two pulses can never overlap: the closer it sits to the corner, the tighter they
+land, and the lower right dot's would-be second pulse falls exactly on the end of
+its first, so it keeps the single pulse it makes at the turn.
+
+There is no rest at the end: the cycle is 1480ms, which is the top left dot
+getting home. A pulse ends at full size, so that dot has recovered the instant
+the next wave leaves — and since the last dot home is also the first away, one
+wave runs straight into the next. Add `?rest=` for a beat between them.
+
+Two pulses cannot be said with one `animation-delay`, so `bounce` drops the
+per-dot delay and gives each dot its own keyframes spanning the whole cycle,
+holding at rest between its pulses. Everything else — the shared curve, the
+`?min=` overrides, the debug readout — works the same.

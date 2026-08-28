@@ -23,11 +23,42 @@ const CENTERS = {
   tl: [4.3241, 7.28461], top: [12.2056, 2.25878], lr: [20.5056, 16.6247], ll: [3.9120, 16.6244]
 };
 
+/* The order `around` fires in: a counter-clockwise lap of the ring starting at
+   the top, then down into the core. */
+const RING = ["top", "tl", "ll", "bottom", "lr", "tr", "core"];
+
+/* `circuit` runs the same lap but closes it: back up to the top, down into the
+   core and up to the top again, which is where the next lap starts. The top
+   fires twice a lap, so the order repeats a key — and the lap runs straight
+   into the next one, with no rest between them. */
+const CIRCUIT = ["top", "tl", "ll", "bottom", "lr", "tr", "top", "core"];
+
+/* `spoke` takes the same lap but goes back to the middle between every dot, so
+   the core beats six times to the ring's one each. */
+const SPOKE = RING.slice(0, 6).flatMap(k => [k, "core"]);
+
 const PRESETS = {
   pulse:   { min: 0.84, dip: 0.45, over: 0.020, pulse: 900,  travel: 620,  rest: 500, fade: 0 },
   breathe: { min: 0.90, dip: 0.50, over: 0.000, pulse: 1500, travel: 1000, rest: 800, fade: 0 },
   snap:    { min: 0.76, dip: 0.30, over: 0.050, pulse: 520,  travel: 380,  rest: 500, fade: 0 },
-  ripple:  { min: 0.86, dip: 0.42, over: 0.030, pulse: 760,  travel: 1240, rest: 180, fade: 0.18 }
+  ripple:  { min: 0.86, dip: 0.42, over: 0.030, pulse: 760,  travel: 1240, rest: 180, fade: 0.18 },
+  /* A lap of the ring rather than a run down the diagonal: `travel` is the
+     spread across the whole order, so each dot is 1/6th of it behind the last. */
+  around:  { min: 0.82, dip: 0.42, over: 0.030, pulse: 640,  travel: 840,  rest: 420, fade: 0,
+             wave: RING },
+  /* Snap, run out and back: the wave crosses to the bottom right, turns there
+     and comes home the way it came, so most dots pulse twice a cycle. No rest:
+     the last dot home is the first away, and a pulse ends at full size, so the
+     next wave leaves the moment this one has recovered. */
+  bounce:  { min: 0.76, dip: 0.30, over: 0.050, pulse: 440,  travel: 300,  rest: 0, fade: 0,
+             bounce: true },
+  /* The lap, closed and left running: `travel` is one whole lap, the eight
+     steps are evenly spaced across it, and it wraps straight into the next. */
+  circuit: { min: 0.80, dip: 0.40, over: 0.030, pulse: 400,  travel: 1600, rest: 0, fade: 0,
+             wave: CIRCUIT, seamless: true },
+  /* Out to a dot and back to the middle, twelve steps round the ring. */
+  spoke:   { min: 0.80, dip: 0.40, over: 0.030, pulse: 420,  travel: 2400, rest: 0, fade: 0,
+             wave: SPOKE, seamless: true }
 };
 
 /* Orbit: the outer dots bloom away from the core, the whole mark winds back,
@@ -150,27 +181,80 @@ function offsets() {
   return out;
 }
 
-function timing(c) {
-  const off = offsets();
-  const delays = {};
-  if (c.delays) {
-    // Explicit delays (hand-tuned in the workbench) win over the computed wave.
-    for (const k of Object.keys(CENTERS)) {
-      delays[k] = Number.isFinite(c.delays[k]) ? clamp(Math.round(c.delays[k]), 0, 6000) : 0;
-    }
-  } else {
-    for (const k of Object.keys(off)) delays[k] = Math.round(off[k] * c.travel);
+/**
+ * Where each dot sits in the wave: 0 fires first, 1 last. Down the diagonal by
+ * default, or spread evenly across `c.wave` when a look names its own order.
+ */
+function waveOffsets(c) {
+  if (!Array.isArray(c.wave)) return offsets();
+  const order = c.wave.filter(k => CENTERS[k]);
+  const span = (order.length - 1) || 1;
+  const out = {};
+  for (const k of Object.keys(CENTERS)) {
+    const i = order.indexOf(k);
+    out[k] = i < 0 ? 0 : i / span;
   }
+  return out;
+}
+
+/** A seamless wave repeats: `travel` is one whole lap, wrap included. */
+const isSeamless = c => Array.isArray(c.wave) && c.seamless;
+
+function timing(c) {
+  const off = waveOffsets(c);
   /* Each dot may move for its own span; the shared pulse length is the default. */
   const lengths = {};
   for (const k of Object.keys(CENTERS)) {
     lengths[k] = c.lengths && Number.isFinite(c.lengths[k])
       ? clamp(Math.round(c.lengths[k]), MIN_LEN, 6000) : c.pulse;
   }
+  /* When a dot pulses more than once a cycle it carries a start per pulse. */
+  const starts = {};
+  let cycle = null;
+  if (isSeamless(c)) {
+    /* The lap runs into the next one, so the step is `travel` over every step
+       in the order, not over the gaps between them, and the cycle is the lap. */
+    const order = c.wave.filter(k => CENTERS[k]);
+    const step = c.travel / order.length;
+    for (const k of Object.keys(CENTERS)) starts[k] = [];
+    order.forEach((k, i) => starts[k].push(Math.round(i * step)));
+    cycle = Math.round(c.travel) + c.rest;
+    /* A dot that fires twice in quick succession takes a shorter pulse, so its
+       two moves stay separate however wide the shared pulse is. */
+    for (const k of Object.keys(CENTERS)) {
+      const gaps = starts[k].map((s, i, all) =>
+        (i + 1 < all.length ? all[i + 1] : all[0] + cycle) - s);
+      const room = gaps.length ? Math.min(...gaps) : cycle;
+      lengths[k] = Math.max(Math.min(lengths[k], room), MIN_LEN);
+    }
+  } else {
+    for (const k of Object.keys(CENTERS)) {
+      if (c.delays) {
+        // Explicit delays (hand-tuned in the workbench) win over the computed wave.
+        starts[k] = [Number.isFinite(c.delays[k]) ? clamp(Math.round(c.delays[k]), 0, 6000) : 0];
+      } else {
+        const out = Math.round(off[k] * c.travel);
+        starts[k] = [out];
+        if (c.bounce) {
+          /* The wave turns once the far dot has finished, so a dot's two pulses
+             can never overlap: the closer it is to the turn, the tighter they sit. */
+          const back = Math.round(c.travel + c.pulse + (1 - off[k]) * c.travel);
+          if (back > out + lengths[k]) starts[k].push(back);
+        }
+      }
+    }
+    const end = Math.max(...Object.keys(starts).map(
+      k => starts[k][starts[k].length - 1] + lengths[k]));
+    cycle = end + c.rest;
+  }
+  const delays = {};
+  for (const k of Object.keys(starts)) delays[k] = starts[k].length ? starts[k][0] : 0;
   const maxDelay = Math.max(...Object.values(delays));
-  const end = Math.max(...Object.keys(delays).map(k => delays[k] + lengths[k]));
-  return { offsets: off, delays, lengths, maxDelay, cycle: end + c.rest };
+  return { offsets: off, starts, delays, lengths, maxDelay, cycle };
 }
+
+/** True when any dot pulses more than once in a cycle. */
+const wavePulsesTwice = c => Object.values(timing(c).starts).some(a => a.length > 1);
 
 const MIN_LEN = 60;
 const lengthsVary = c => {
@@ -997,13 +1081,58 @@ function keyframes(c, name = "scatterPulse", key = null) {
   return `@keyframes ${name} {\n${rows.join("\n")}\n}`;
 }
 
+/**
+ * Keyframes for one dot across the whole cycle, holding at rest between its
+ * pulses. Used when a dot pulses more than once, which no single delay can say.
+ */
+function waveKeyframes(c, name, key) {
+  const { cycle, starts, lengths } = timing(c);
+  const len = lengths[key];
+  const frame = (pct, sc) => `  ${pct.toFixed(3)}% { transform: scale(${sc.toFixed(4)})`
+    + (c.fade ? `; opacity: ${opacityAt(sc, c).toFixed(3)}` : "") + " }";
+  const rest = pct => frame(pct, 1);
+  /* Each pulse is a window: the span of the cycle it covers, and the span of
+     the curve it draws there. A pulse that runs past the end of the cycle is
+     split in two and finishes at the top of the next lap, so the loop closes
+     on the same scale it opens on and the seam cannot be seen. */
+  const windows = [];
+  for (const start of starts[key] || []) {
+    const over = start + len - cycle;
+    if (over > 0) {
+      const t = (cycle - start) / len;
+      windows.push({ a: start, b: cycle, t0: 0, t1: t }, { a: 0, b: over, t0: t, t1: 1 });
+    } else {
+      windows.push({ a: start, b: start + len, t0: 0, t1: 1 });
+    }
+  }
+  windows.sort((x, y) => x.a - y.a);
+  const rows = [];
+  let cursor = -1;                                   /* % the last pulse ended at */
+  for (const w of windows) {
+    const a = (w.a / cycle) * 100, b = (w.b / cycle) * 100;
+    const fromRest = w.t0 < 0.0001;                  /* a wrapped tail starts mid-curve */
+    if (fromRest && a > cursor + 0.001) rows.push(rest(a));   /* hold until it starts */
+    for (let i = fromRest ? 1 : 0; i <= SAMPLES; i++) {
+      const u = i / SAMPLES;
+      rows.push(frame(a + (b - a) * u, curve(w.t0 + (w.t1 - w.t0) * u, c)));
+    }
+    cursor = b;
+  }
+  if (cursor < 99.999) rows.push(rest(100));
+  if (!rows.length) rows.push(rest(0), rest(100));   /* a dot the wave never reaches */
+  return `@keyframes ${name} {\n${rows.join("\n")}\n}`;
+}
+
 /** Inline <svg> for the mark, with each dot carrying its own delay. */
 function markSvg(c, className = "scatter-mark") {
-  /* Only the pulse staggers its dots; every other mode drives them off one clock. */
-  const delays = c.mode ? {} : timing(c).delays;
+  /* Only the pulse staggers its dots; every other mode drives them off one
+     clock, as does a wave whose dots pulse twice: their timing is in the
+     keyframes, not in a delay. */
+  const staggered = !c.mode && !wavePulsesTwice(c);
+  const delays = staggered ? timing(c).delays : {};
   const paths = DOTS.map(
     d => `    <path class="dot" data-key="${d.key}"`
-       + (c.mode ? "" : ` style="--delay:${delays[d.key]}ms"`)
+       + (staggered ? ` style="--delay:${delays[d.key]}ms"` : "")
        + ` d="${d.d}"/>`
   ).join("\n");
   const svg = `<svg class="${className}" viewBox="0 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg"\n`
@@ -1112,14 +1241,23 @@ function animCss(c, markSel, dotSel, suffix = "", scope = "") {
     return rules.join("\n") + "\n\n" + orbitKeyframes(c, suffix);
   }
   const { delays } = timing(c);
+  const twice = wavePulsesTwice(c);
   const varied = lengthsVary(c);
   const rules = [
     `${S}${markSel} { animation: none; transform: none }`,
     `${S}${dotSel} { animation-duration: ${cycle}ms;`
       + ` animation-delay: var(--delay, 0ms); animation-timing-function: linear;`
       + ` animation-iteration-count: infinite; animation-fill-mode: both }`,
-    ...DOTS.map((d, i) => `${S}${dotSel}:nth-child(${i + 1}) { --delay: ${delays[d.key]}ms }`)
+    ...(twice ? [] : DOTS.map((d, i) =>
+      `${S}${dotSel}:nth-child(${i + 1}) { --delay: ${delays[d.key]}ms }`))
   ];
+  if (twice) {
+    /* Every dot runs off the same clock; when it pulses is in its own keyframes. */
+    rules.push(...DOTS.map(d =>
+      `${S}${dotSel}[data-key="${d.key}"] { animation-name: pulse_${d.key}${suffix} }`));
+    return rules.join("\n") + "\n\n"
+      + DOTS.map(d => waveKeyframes(c, `pulse_${d.key}${suffix}`, d.key)).join("\n\n");
+  }
   if (!varied) {
     rules.push(`${S}${dotSel} { animation-name: scatterPulse${suffix} }`);
     return rules.join("\n") + "\n\n" + keyframes(c, "scatterPulse" + suffix);
@@ -1257,6 +1395,8 @@ module.exports = { DOTS, CENTERS, RADIAL, RADIUS, PRESETS, ORBIT_PRESETS, CUBE_P
                    smearKeyframes, rollSpeedAt, rollPeakSpeed, RADIAL_DEG, SHAPE, goDeg,
                    cubePhases, cubeRotation, cubeHop, cubeSquash, cubeTuck, cubeKeyframes,
                    DEFAULT_PRESET, SAMPLES,
-                   SPIN_ORIGIN, curve, offsets, timing, keyframes, orbitPhases, orbitKeyframes,
+                   SPIN_ORIGIN, curve, offsets, waveOffsets, RING, CIRCUIT, SPOKE, timing,
+                   keyframes,
+                   waveKeyframes, wavePulsesTwice, orbitPhases, orbitKeyframes,
                    rotationAt, pushAt, cycleOf, animCss, markSvg, markCss, resolveConfig,
                    parseDelays, parseLengths, lengthsVary };

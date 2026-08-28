@@ -95,11 +95,12 @@ function loadingPage({ id, presetId, config, debug }) {
             ["wind back", `${config.windup}&deg;`], ["turn", `${config.turns * 360}&deg;`],
             ["spin starts", `${o.bloomEnd}ms`], ["spin ends", `${o.spinEnd}ms`]];
   } else {
-    const { delays } = anim.timing(config);
+    const { delays, starts } = anim.timing(config);
     rows = [["pulse", `${config.pulse}ms`], ["travel", `${config.travel}ms`],
             ["rest", `${config.rest}ms`], ["min scale", `${config.min}`]]
+      /* a dot that pulses twice a cycle lists both starts */
       .concat(Object.keys(delays).sort((a, b) => delays[a] - delays[b])
-        .map(k => [k, `${delays[k]}ms`]));
+        .map(k => [k, starts[k].map(ms => `${ms}ms`).join(" &middot; ")]));
   }
 
   return `<!doctype html>

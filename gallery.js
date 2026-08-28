@@ -13,7 +13,8 @@ const esc = s => String(s).replace(/[&<>"']/g, ch =>
 /* The gallery: every look worth comparing, side by side, each with a way
    through to the real loading screen. Grouped by mode, three across. */
 const GALLERY = [
-  { mode: "Pulse wave", ids: ["pulse", "snap", "ripple"] },
+  { mode: "Pulse wave",
+    ids: ["pulse", "snap", "ripple", "around", "bounce", "circuit", "spoke"] },
   { mode: "Orbit spin", ids: ["bloom", "snappy"] },
   { mode: "Corner roll", ids: ["thud"] },
   { mode: "Smear", ids: ["smear", "hard"] },
