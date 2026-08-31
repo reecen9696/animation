@@ -336,6 +336,10 @@ function customLoadingPage({ id, debug }) {
     animationData: ${JSON.stringify(custom.data(id))}
   });
   if (still !== null) player.goToAndStop(still, true);
+  var stageMount = document.querySelector("#stage-box .lottie");
+  if (stageMount) stageMount._anim = player;
+${custom.driverJs('document.querySelectorAll("#stage-box .lottie[data-anim]")')}
+
   var hint = document.getElementById("hint");
   setTimeout(function () { hint.classList.add("gone"); }, 4000);
   var back = document.getElementById("back"), backTimer;

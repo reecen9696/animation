@@ -274,7 +274,48 @@ ${sections}
     }
     return el._anim;
   }
-  Array.prototype.forEach.call(document.querySelectorAll(".lottie"), player);
+  /* Lottie redraws its whole SVG every frame, so every player left running is
+     a standing cost whether or not anyone can see it. Booting all of them at
+     load put 18 on the clock - twelve of them inside display:none buttons -
+     and the looks that carry their motion in that redraw, rather than in CSS,
+     are the ones that starve and appear to freeze.
+
+     So: a card's player is built when the card comes near the viewport and
+     paused again when it leaves, and a button's is not built until the button
+     first shows one. The CSS-driven looks are unaffected either way - the
+     compositor was never the bottleneck. */
+  function show(cell, on) {
+    var el = cell.querySelector(".stage .lottie");
+    if (!el) return;
+    if (on) {
+      var a = player(el);
+      if (STILL[el.getAttribute("data-anim")] === undefined) a.play();
+    } else if (el._anim) {
+      el._anim.pause();
+    }
+  }
+  var near = function (cell) {
+    var r = cell.getBoundingClientRect();
+    return r.bottom > -250 && r.top < (innerHeight + 250);
+  };
+  var cells = document.querySelectorAll(".cell");
+
+  /* Decided from geometry on a scroll, not from an observer. An observer only
+     reports through the rendering pipeline, so a tab that is not being painted
+     is never told anything - and a card that is never told it is visible would
+     never draw at all, which is a worse failure than drawing too much. Reading
+     the rectangles costs one pass over ~50 cards, throttled, and it answers
+     the same question without depending on a frame having been drawn. */
+  var pending = false;
+  function sweep() {
+    pending = false;
+    Array.prototype.forEach.call(cells, function (c) { show(c, near(c)); });
+  }
+  function queue() { if (!pending) { pending = true; setTimeout(sweep, 120); } }
+  sweep();
+  addEventListener("scroll", queue, { passive: true });
+  addEventListener("resize", queue);
+  addEventListener("hashchange", queue);
 
   /* A CSS animation restarts on its own when an element stops being
      display:none; a lottie has to be told, and has to be measured again
@@ -292,6 +333,8 @@ ${sections}
      mark is display:none until then, and an element that has just stopped
      being display:none starts its animation from the top, so the spin always
      begins on frame one rather than wherever the clock happened to be. */
+${custom.driverJs('document.querySelectorAll(\'.lottie[data-anim]\')')}
+
   document.addEventListener("click", function (e) {
     var b = e.target.closest(".ui-btn");
     if (!b) return;

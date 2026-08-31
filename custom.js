@@ -152,29 +152,46 @@ const CUSTOM = {
     portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0, thin: 17,
               apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 720 }
   },
-  /* Pips through the portal, and the file's own roll rather than a still spun
-     by CSS - slowed so one roll spans most of the flight instead of three
-     spinning past. `turn: 0` keeps CSS off the rotation entirely. */
+  /* The chute again - no disc, just a floor it drops past - carrying the pips
+     exactly as delivered, at their own frame rate. Nothing in the file is
+     retimed: the only question asked of it is which frame to show, and it is
+     asked that only between one contact and the next, so a roll takes a whole
+     bounce rather than the rise alone.
+     On top of that the mark turns as a whole, the way `chute` does, at half
+     its rate - a slow drift under the tumble rather than a second spin. */
+  chutepips: {
+    file: "dice.json",
+    source: "Scatter loading (black dice) v6.1 - 1 sec",
+    note: "The pips dropping through the floor, still in the air and rolling "
+        + "only where they hit.",
+    /* Exactly `pips` and nothing else - no declutter table, no retiming. The
+       drawing has to be the one that already works; the only thing this look
+       adds is when it is asked to draw. */
+    recolor: { "#F3F3F3": "#FFFFFF" },
+    hide: ["Sq"], freeze: 0,
+    /* Thrown higher and held longer than the rest of the family, and for one
+       reason: a roll has to finish inside a single bounce. Hang time goes with
+       the square root of the height, so the heights buy the time and the cycle
+       makes up the difference - 1127ms and 1355ms between contacts, which is
+       a whole roll each without hurrying it. */
+    portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
+              apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
+              turnFromApex: true, impactRoll: true, rollFrac: [0.77, 0.60] }
+  },
+  /* `chutepips` with the way in and out put back: the disc opens for it, shuts
+     behind it, and opens again under the last bounce. Everything about the die
+     - the drawing, the straight throw, the roll off each contact - is the same;
+     only the floor is different. */
   portalpips: {
     file: "dice.json",
     source: "Scatter loading (black dice) v6.1 - 1 sec",
-    note: "The portal throw with only the dots, tumbling on the file's own "
-        + "roll slowed to the pace of the bounce.",
+    note: "The pips coming up through a hole in the floor and dropping back "
+        + "through it, rolling only where they hit.",
     recolor: { "#F3F3F3": "#FFFFFF" },
-    hide: ["Sq"], dots: DECLUTTER, rollMs: 2600,
-    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
-              apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 0 }
-  },
-  /* The same again with the die whole, so the body rolls with the dots. */
-  portalroll: {
-    file: "dice.json",
-    source: "Scatter loading (black dice) v6.1 - 1 sec",
-    note: "The portal throw with the whole die rolling on its own animation, "
-        + "slowed to the pace of the bounce.",
-    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
-    dots: DECLUTTER, round: 74, rollMs: 2600,
-    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
-              apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 0 }
+    hide: ["Sq"], freeze: 0,
+    portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
+              apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
+              turnFromApex: true, impactRoll: true, rollFrac: [0.77, 0.60] }
   },
   ghost: {
     file: "ghost.json",
@@ -386,6 +403,29 @@ const stills = () => Object.fromEntries(ids()
  *
  * Heights are percentages of the die's own box, so the scene scales whole.
  */
+/**
+ * When the die is where, as percentages of the cycle.
+ *
+ * Every mark is derived from the heights, never typed. Under one gravity a
+ * segment's duration goes with the square root of the distance it covers, so
+ * the six arcs share out the airborne time in that ratio - which is what makes
+ * it read as one object losing a little energy per bounce rather than as
+ * separate hops. Change a height and the timing follows on its own.
+ *
+ * The CSS reads these, and so does anything that needs to know when the die is
+ * on the ground - which is the only way the two can be sure to agree.
+ */
+function portalMarks(p) {
+  const HOLD = 6, TAIL = 8.1;
+  const seg = [p.below + p.apex, p.apex, p.b1, p.b1, p.b2, p.b2 + p.below]
+    .map(Math.sqrt);
+  const span = (100 - HOLD - TAIL) / seg.reduce((a, b) => a + b, 0);
+  const m = [];
+  seg.reduce((t, u) => { const n = t + u * span; m.push(n); return n; }, HOLD);
+  return { HOLD, TAIL, apexAt: m[0], land1: m[1], peak1: m[2],
+           land2: m[3], peak2: m[4], gone: m[5] };
+}
+
 function portalCss(id, scope, suffix = "") {
   const p = CUSTOM[id] && CUSTOM[id].portal;
   if (!p) return null;
@@ -402,18 +442,7 @@ function portalCss(id, scope, suffix = "") {
   const h = v => (-v / p.die * 100).toFixed(1);
   const below = (p.below / p.die * 100).toFixed(1);
 
-  /* Every mark is derived from the heights, never typed. Under one gravity a
-     segment's duration goes with the square root of the distance it covers,
-     so the six arcs share out the airborne time in that ratio - which is what
-     makes it read as one object losing a little energy per bounce rather than
-     as separate hops. Change a height and the timing follows on its own. */
-  const HOLD = 6, TAIL = 8.1;
-  const seg = [p.below + p.apex, p.apex, p.b1, p.b1, p.b2, p.b2 + p.below]
-    .map(Math.sqrt);
-  const span = (100 - HOLD - TAIL) / seg.reduce((a, b) => a + b, 0);
-  const m = [];
-  seg.reduce((t, u) => { const n = t + u * span; m.push(n); return n; }, HOLD);
-  const [apexAt, land1, peak1, land2, peak2, gone] = m;
+  const { HOLD, apexAt, land1, peak1, land2, peak2, gone } = portalMarks(p);
   const pc = v => v.toFixed(1) + "%";
 
   /* The disc has to be open at each crossing and shut in between, so its cues
@@ -457,9 +486,15 @@ ${S}.scene[data-scene="${id}"] .scene-die svg {
   }
 
 @keyframes scTurn${suffix} {
-  0%, ${pc(HOLD)}   { transform: rotate(0deg) }
+${p.turnFromApex
+  /* Thrown straight: nothing turns on the way up, and the angle only starts to
+     come off it once gravity has taken over at the top. */
+  ? `  0%, ${pc(apexAt)}  { transform: rotate(0deg) }
+  ${pc(land1)}      { transform: rotate(${(p.turn * 0.35).toFixed(0)}deg) }
+  ${pc(land2)}      { transform: rotate(${(p.turn * 0.70).toFixed(0)}deg) }`
+  : `  0%, ${pc(HOLD)}   { transform: rotate(0deg) }
   ${pc(land1)}      { transform: rotate(${(p.turn * 0.5).toFixed(0)}deg) }
-  ${pc(land2)}      { transform: rotate(${(p.turn * 0.75).toFixed(0)}deg) }
+  ${pc(land2)}      { transform: rotate(${(p.turn * 0.75).toFixed(0)}deg) }`}
   ${pc(gone)}, 100% { transform: rotate(${p.turn}deg) }
 }` : "";
 
@@ -499,5 +534,80 @@ const motionCss = (id, scope, suffix) =>
 /** How big to draw the mount: a look that jumps needs headroom above it. */
 const mountScale = id => (CUSTOM[id] && CUSTOM[id].jump && CUSTOM[id].jump.mount) || 1;
 
+/**
+ * `{ id: { ms, windows: [[from, to], ...] } }` in cycle percentages, for looks
+ * whose roll is driven by their landings. A window runs from the contact to
+ * the top of the bounce it caused, so one whole roll fits between them.
+ */
+function rollSpec() {
+  const out = {};
+  for (const id of ids()) {
+    const p = CUSTOM[id] && CUSTOM[id].portal;
+    if (!p || !p.impactRoll) continue;
+    const m = portalMarks(p);
+    /* A window per contact. The roll takes `rollFrac` of the gap to the next
+       one rather than all of it, so it finishes early and the rest of the
+       bounce is spent sitting on the opening frame - which is the only moment
+       the mark is legible as the mark. */
+    const f = p.rollFrac === undefined ? 1 : p.rollFrac;
+    const at = i => Array.isArray(f) ? (f[i] === undefined ? f[f.length - 1] : f[i]) : f;
+    const win = (from, to, i) => [from, from + (to - from) * at(i)];
+    out[id] = { ms: p.ms,
+                windows: [win(m.land1, m.land2, 0), win(m.land2, m.gone, 1)] };
+  }
+  return out;
+}
+
+/**
+ * The script that plays an impact-rolled look, for a page to inline.
+ *
+ * It takes its time from the bounce's own CSS animation rather than from a
+ * clock of its own. A timer started alongside would be right at first and
+ * wrong later - the two would drift, and the roll would slide off the landing
+ * it is meant to belong to. Reading `currentTime` off the running animation
+ * means the tumble is pinned to the contact by construction, whenever the page
+ * started and however long it has been open.
+ *
+ * `mounts()` is supplied by the page, because each one keeps its players
+ * differently; it returns only the ones worth drawing.
+ */
+function driverJs(mountsExpr) {
+  return `
+  var ROLLS = ${JSON.stringify(rollSpec())};
+  (function () {
+    var ids = Object.keys(ROLLS);
+    if (!ids.length) return;
+    function frameFor(spec, pct) {
+      for (var i = 0; i < spec.windows.length; i++) {
+        var w = spec.windows[i];
+        if (pct >= w[0] && pct <= w[1]) return (pct - w[0]) / (w[1] - w[0]);
+      }
+      return null;                       /* between contacts: held at rest */
+    }
+    function tick() {
+      var list = ${mountsExpr};
+      for (var i = 0; i < list.length; i++) {
+        var el = list[i], a = el._anim;
+        if (!a) continue;
+        var spec = ROLLS[el.getAttribute("data-anim")];
+        if (!spec) continue;
+        /* the bounce's own clock, so the two cannot come apart */
+        var die = el.closest(".scene-die");
+        var css = die && die.getAnimations && die.getAnimations()[0];
+        if (!css || css.currentTime == null) continue;
+        var pct = ((css.currentTime % spec.ms) / spec.ms) * 100;
+        var u = frameFor(spec, pct);
+        /* The last frame is the first frame again - that is where the file
+           loops - so the window is mapped onto the whole span rather than one
+           short of it, and a roll ends on the formation it began with. */
+        a.goToAndStop(u === null ? 0 : u * a.totalFrames, true);
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  })();`;
+}
+
 module.exports = { CUSTOM, ids, has, raw, data, cycleOf, meta, bundle,
-                   jumpCss, portalCss, motionCss, markup, mountScale, stills, DIR };
+                   jumpCss, portalCss, portalMarks, motionCss, markup,
+                   mountScale, stills, rollSpec, driverJs, DIR };

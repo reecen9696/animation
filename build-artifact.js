@@ -235,6 +235,8 @@ ${meta}
     if (n >= 1 && n <= keys.length) select(keys[n - 1]);
   });
 
+${custom.driverJs('mount.querySelectorAll(".lottie[data-anim]")')}
+
   var initial = (location.hash || "").slice(1);
   select(META[initial] ? initial : "track");
 </script>
