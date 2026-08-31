@@ -28646,7 +28646,7 @@ body[data-preset="streak"] .scatter-mark-trail {
   });
 
 
-  var ROLLS = {"chutepips":{"ms":4600,"windows":[[37.9271358237782,56.79663923880429],[62.432984414721176,80.11319376588847]]},"portalpips":{"ms":4600,"windows":[[37.9271358237782,56.79663923880429],[62.432984414721176,80.11319376588847]]},"chutedice":{"ms":4600,"windows":[[37.9271358237782,56.79663923880429],[62.432984414721176,80.11319376588847]]}};
+  var ROLLS = {"chutepips":{"ms":4600,"frames":26,"windows":[[37.9271358237782,56.79663923880429],[62.432984414721176,80.11319376588847]]},"portalpips":{"ms":4600,"frames":26,"windows":[[37.9271358237782,56.79663923880429],[62.432984414721176,80.11319376588847]]},"chutedice":{"ms":4600,"frames":26,"windows":[[37.9271358237782,56.79663923880429],[62.432984414721176,80.11319376588847]]}};
   (function () {
     var ids = Object.keys(ROLLS);
     if (!ids.length) return;
@@ -28673,7 +28673,7 @@ body[data-preset="streak"] .scatter-mark-trail {
         /* The last frame is the first frame again - that is where the file
            loops - so the window is mapped onto the whole span rather than one
            short of it, and a roll ends on the formation it began with. */
-        a.goToAndStop(u === null ? 0 : u * a.totalFrames, true);
+        a.goToAndStop(u === null ? 0 : u * (spec.frames || a.totalFrames), true);
       }
       requestAnimationFrame(tick);
     }

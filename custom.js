@@ -150,7 +150,7 @@ const CUSTOM = {
        a whole roll each without hurrying it. */
     portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
               apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
-              turnFromApex: true, impactRoll: true, rollFrac: [0.77, 0.60] }
+              turnFromApex: true, impactRoll: true, rollEnd: 26, rollFrac: [0.77, 0.60] }
   },
   /* `chutepips` with the way in and out put back: the disc opens for it, shuts
      behind it, and opens again under the last bounce. Everything about the die
@@ -165,7 +165,7 @@ const CUSTOM = {
     hide: ["Sq"], freeze: 0,
     portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
               apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
-              turnFromApex: true, impactRoll: true, rollFrac: [0.77, 0.60] }
+              turnFromApex: true, impactRoll: true, rollEnd: 26, rollFrac: [0.77, 0.60] }
   },
   /* `chutepips` with the die whole rather than only its dots. Same drawing as
      `dice` - body turned white, pips turned black, and nothing else touched,
@@ -181,7 +181,7 @@ const CUSTOM = {
     freeze: 0,
     portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
               apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
-              turnEven: true, impactRoll: true, rollFrac: [0.77, 0.60] }
+              turnEven: true, impactRoll: true, rollEnd: 26, rollFrac: [0.77, 0.60] }
   },
   ghost: {
     file: "ghost.json",
@@ -504,10 +504,15 @@ function rollSpec() {
        one rather than all of it, so it finishes early and the rest of the
        bounce is spent sitting on the opening frame - which is the only moment
        the mark is legible as the mark. */
+    /* The file stops moving before it runs out. Measured across its 31
+       frames, the dots are back in the resting formation by frame 26 and the
+       last six are identical to it - so mapping a window onto the whole span
+       spends a fifth of every roll on a die that has already stopped, which is
+       what reads as the spin failing rather than finishing. */
     const f = p.rollFrac === undefined ? 1 : p.rollFrac;
     const at = i => Array.isArray(f) ? (f[i] === undefined ? f[f.length - 1] : f[i]) : f;
     const win = (from, to, i) => [from, from + (to - from) * at(i)];
-    out[id] = { ms: p.ms,
+    out[id] = { ms: p.ms, frames: p.rollEnd,
                 windows: [win(m.land1, m.land2, 0), win(m.land2, m.gone, 1)] };
   }
   return out;
@@ -555,7 +560,7 @@ function driverJs(mountsExpr) {
         /* The last frame is the first frame again - that is where the file
            loops - so the window is mapped onto the whole span rather than one
            short of it, and a roll ends on the formation it began with. */
-        a.goToAndStop(u === null ? 0 : u * a.totalFrames, true);
+        a.goToAndStop(u === null ? 0 : u * (spec.frames || a.totalFrames), true);
       }
       requestAnimationFrame(tick);
     }
