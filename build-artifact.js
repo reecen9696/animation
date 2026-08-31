@@ -77,6 +77,25 @@ ${perPreset}
 
 ${blocks}
 
+  /* Back to the gallery. Comes up with the cursor and goes again when it
+     stills, so nothing sits over the mark while it is being watched. */
+  .back {
+    position: fixed; top: 18px; left: 18px; z-index: 4;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 999px; text-decoration: none;
+    font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+    color: rgba(255, 255, 255, .72);
+    background: rgba(6, 8, 10, .72); border: 1px solid rgba(255, 255, 255, .14);
+    backdrop-filter: blur(10px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s ease, color .15s, border-color .15s;
+  }
+  .back.show { opacity: 1; pointer-events: auto }
+  .back:hover { color: #fff; border-color: rgba(255, 255, 255, .4) }
+  .back:focus-visible { opacity: 1; pointer-events: auto;
+                        outline: 2px solid #fff; outline-offset: 2px }
+  @media (prefers-reduced-motion: reduce) { .back { transition: none } }
+
   /* Controls sit in a corner so the simulation stays readable. */
   .panel {
     position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 3;
@@ -104,6 +123,8 @@ ${blocks}
   }
 </style>
 
+<a class="back" id="back" href="gallery.html">&larr; Gallery</a>
+
 <div class="loader">
   ${anim.markSvg({ ...anim.CUBE_PRESETS.tumble, trail: 4 }, "scatter-mark")}
 </div>
@@ -120,6 +141,15 @@ ${meta}
   var panel = document.getElementById("panel");
   var readout = document.getElementById("readout");
   var dim;
+
+  /* The way back only exists while the cursor is being moved. Hovering it
+     keeps generating mousemove, so it cannot vanish from under the pointer. */
+  var back = document.getElementById("back"), backTimer;
+  addEventListener("mousemove", function () {
+    back.classList.add("show");
+    clearTimeout(backTimer);
+    backTimer = setTimeout(function () { back.classList.remove("show"); }, 2000);
+  });
 
   function select(id) {
     document.body.setAttribute("data-preset", id);

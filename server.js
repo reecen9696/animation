@@ -165,8 +165,26 @@ function loadingPage({ id, presetId, config, debug }) {
   .hint.gone { opacity: 0 }
   .hint b { color: rgba(255, 255, 255, .82); font-weight: 600 }
 
+  /* Back to the gallery. Comes up with the cursor and goes again when it
+     stills, so nothing sits over the mark while it is being watched. */
+  .back {
+    position: fixed; top: 18px; left: 18px; z-index: 4;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 999px; text-decoration: none;
+    font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+    color: rgba(255, 255, 255, .72);
+    background: rgba(6, 8, 10, .72); border: 1px solid rgba(255, 255, 255, .14);
+    backdrop-filter: blur(10px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s ease, color .15s, border-color .15s;
+  }
+  .back.show { opacity: 1; pointer-events: auto }
+  .back:hover { color: #fff; border-color: rgba(255, 255, 255, .4) }
+  .back:focus-visible { opacity: 1; pointer-events: auto;
+                        outline: 2px solid #fff; outline-offset: 2px }
+
   .debug {
-    position: fixed; top: 18px; left: 18px; z-index: 3;
+    position: fixed; top: 76px; left: 18px; z-index: 3;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px; line-height: 1.7; color: rgba(255, 255, 255, .72);
     background: rgba(6, 8, 10, .92); border: 1px solid rgba(255, 255, 255, .16);
@@ -178,10 +196,12 @@ function loadingPage({ id, presetId, config, debug }) {
   .debug .row { display: flex; justify-content: space-between; gap: 18px }
   .debug .row span:last-child { font-variant-numeric: tabular-nums; color: #fff }
 
-  @media (prefers-reduced-motion: reduce) { .hint { transition: none } }
+  @media (prefers-reduced-motion: reduce) { .hint, .back { transition: none } }
 </style>
 </head>
 <body>
+  <a class="back" id="back" href="/gallery">&larr; Gallery</a>
+
   <div class="loader">
     ${anim.markSvg(config, "scatter-mark")}
   </div>
@@ -200,6 +220,15 @@ function loadingPage({ id, presetId, config, debug }) {
   var PRESETS = ${JSON.stringify(presetLinks)};   // 1-4 pulse, 5-8 orbit
   var hint = document.getElementById("hint");
   var timer = setTimeout(function () { hint.classList.add("gone"); }, 4000);
+
+  /* The way back only exists while the cursor is being moved. Hovering it
+     keeps generating mousemove, so it cannot vanish from under the pointer. */
+  var back = document.getElementById("back"), backTimer;
+  addEventListener("mousemove", function () {
+    back.classList.add("show");
+    clearTimeout(backTimer);
+    backTimer = setTimeout(function () { back.classList.remove("show"); }, 2000);
+  });
 
   document.addEventListener("keydown", function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;

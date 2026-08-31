@@ -2,7 +2,7 @@
  * The contact sheet: every look, side by side, five across.
  *
  * Shared by the dev server (/gallery) and the static build (gallery.html) so the
- * two cannot drift. The only difference between them is where "Open full size"
+ * two cannot drift. The only difference between them is where "Test loading"
  * points, which the caller supplies.
  */
 const anim = require("./anim.js");
@@ -44,15 +44,35 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
       const c = anim.resolveConfig(id, {});
       const sfx = "_" + id.replace(/[^a-z0-9]/gi, "");
       css.push(anim.animCss(c, ".mark", ".mark .dot", sfx, `#c-${id}`));
-      return { id, config: c, cycle: anim.cycleOf(c) };
+      return { id, config: c };
     })
   }));
 
-  const card = ({ id, config, cycle }) => {
-    /* The row heading names the family, so the card only has to say which
-       look it is and how long its cycle runs. */
-    const meta = `<div class="meta"><h3>${esc(id)}</h3>`
-      + `<span>${cycle}ms</span></div>`;
+  /* The look as it would actually ship: a real button, at the real height, with
+     the mark standing in for its loading state. `Bet` swaps its label for the
+     mark for a second; `Autobet` runs it alongside the label until it is
+     stopped. Both reuse the card's own animation - the SVG carries the same
+     class the keyframes are scoped to, so it cannot drift from the big one. */
+  const uiButtons = config => {
+    const spin = anim.markSvg({ ...config, trail: 0 }, "mark");
+    return `
+        <div class="ui">
+          <button class="ui-btn" type="button" data-role="bet" aria-label="Bet">
+            <span class="ui-spin" aria-hidden="true">${spin}</span>
+            <span class="ui-text">Bet</span>
+          </button>
+          <button class="ui-btn" type="button" data-role="auto">
+            <span class="ui-spin" aria-hidden="true">${spin}</span>
+            <span class="ui-text">Start Autobet</span>
+          </button>
+        </div>`;
+  };
+
+  const card = ({ id, config }) => {
+    /* The row heading names the family, so the card only has to name the look.
+       It sits above the stage: the eye finds the name before the motion, and
+       every card below a heading then reads top-down in the same order. */
+    const name = `<h3 class="name">${esc(id)}</h3>`;
     if (config.mode === "dash") {
       /* Travel is a percentage of the mark's own width, so the band that holds
          it is sized in mark widths too and the two can never drift apart. The
@@ -61,21 +81,23 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
       const e = anim.dashExtent(config);
       return `
       <article class="cell wide" id="c-${id}">
+        ${name}
         <div class="stage band-stage"
              style="--span:${e.span.toFixed(4)};--lead:${e.lead.toFixed(4)}">
           <div class="band" data-note="${e.span.toFixed(2)}&times; the mark">
             ${anim.markSvg(config, "mark")}
           </div>
         </div>
-        ${meta}
-        <a class="btn" href="${esc(testHref(id))}">Open full size</a>
+        ${uiButtons(config)}
+        <a class="btn" href="${esc(testHref(id))}">Test loading</a>
       </article>`;
     }
     return `
       <article class="cell" id="c-${id}">
+        ${name}
         <div class="stage">${anim.markSvg(config, "mark")}</div>
-        ${meta}
-        <a class="btn" href="${esc(testHref(id))}">Open full size</a>
+        ${uiButtons(config)}
+        <a class="btn" href="${esc(testHref(id))}">Test loading</a>
       </article>`;
   };
 
@@ -93,7 +115,7 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Scatter mark &middot; every look</title>
+<title>Scatter Logo Animation</title>
 <style>
   *,*::before,*::after{box-sizing:border-box}
   body{margin:0;padding:56px 28px 80px;background:#0b0d0f;color:#e8ebef;
@@ -109,11 +131,10 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   .row h2 span{font-weight:400;letter-spacing:.04em;color:#6b7581;
                font-variant-numeric:tabular-nums}
 
-  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
-  @media (max-width:1180px){.grid{grid-template-columns:repeat(4,1fr)}}
-  @media (max-width:940px){.grid{grid-template-columns:repeat(3,1fr)}}
-  @media (max-width:700px){.grid{grid-template-columns:repeat(2,1fr)}}
-  @media (max-width:460px){.grid{grid-template-columns:1fr}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media (max-width:1080px){.grid{grid-template-columns:repeat(3,1fr)}}
+  @media (max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:540px){.grid{grid-template-columns:1fr}
                            .cell.wide{grid-column:span 1}}
 
   /* Black ground, border kept: the same background the mark gets on the real
@@ -132,12 +153,28 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
                padding:0 7px;background:#000;font-size:10px;letter-spacing:.1em;
                text-transform:uppercase;color:#a5762f}
 
-  /* The gap below the title lives here, not on the button: the button's
-     margin-top is auto so it can hang off the bottom of the cell, and auto
-     wins over any top margin it might otherwise carry. */
-  .meta{display:flex;justify-content:space-between;align-items:baseline;
-        padding:13px 14px 20px}
-  .meta{gap:8px}
+  .name{margin:0;padding:13px 14px 11px;font-size:14px;font-weight:600;
+        text-transform:capitalize;color:#e5a040}
+
+  /* The shipping button, at the height it ships at. Overflow is clipped
+     because a travelling look (dash, track) walks its mark clean out of a
+     54px box - which is itself worth seeing. The block's margin-top is auto so
+     it hangs off the bottom however tall the stage above it turns out. */
+  .ui{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding:14px 14px 10px}
+  .ui-btn{display:flex;align-items:center;justify-content:center;gap:10px;
+          width:100%;height:54px;padding:0 14px;border:0;border-radius:6px;
+          overflow:hidden;cursor:pointer;font:600 15px/1 inherit;color:#fff;
+          background:#FF4D41;transition:background .12s}
+  .ui-btn:hover{background:#FF8279}
+  /* Selected beats hover: a button that is mid-bet or running autobet stays
+     pressed-dark, so the state is legible with the cursor sitting on it. */
+  .ui-btn.loading,.ui-btn.on,.ui-btn:active{background:#B3362D}
+  .ui-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .ui-spin{display:none;flex:none;line-height:0}
+  .ui-btn .mark{width:22px;filter:none}
+  /* Bet swaps its label out; autobet keeps it and runs the mark to its left. */
+  .ui-btn.loading .ui-text{display:none}
+  .ui-btn.loading .ui-spin,.ui-btn.on .ui-spin{display:block}
   .meta h3{margin:0;font-size:14px;text-transform:capitalize;color:#e5a040}
   .meta span{font-size:10px;letter-spacing:.04em;text-transform:uppercase;
              color:#6b7581;text-align:right;flex:none}
@@ -165,13 +202,36 @@ ${css.join("\n\n")}
 </head>
 <body>
 <div class="wrap">
-  <h1>Scatter mark &middot; every look</h1>
+  <h1>Scatter Logo Animation</h1>
 ${sections}
   <div class="more">
     Every look on this page has a card on the <a href="/">index</a> with its
     numbers; tune new ones in the <a href="/workbench">workbench</a>.
   </div>
 </div>
+<script>
+  /* One listener for the whole page: the cards are identical, so the only
+     thing that varies is which button was hit. Both states are a class - the
+     mark is display:none until then, and an element that has just stopped
+     being display:none starts its animation from the top, so the spin always
+     begins on frame one rather than wherever the clock happened to be. */
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest(".ui-btn");
+    if (!b) return;
+    if (b.getAttribute("data-role") === "bet") {
+      if (b.classList.contains("loading")) return;
+      b.classList.add("loading");
+      b.setAttribute("aria-busy", "true");
+      setTimeout(function () {
+        b.classList.remove("loading");
+        b.removeAttribute("aria-busy");
+      }, 1000);
+      return;
+    }
+    var on = b.classList.toggle("on");
+    b.querySelector(".ui-text").textContent = on ? "Stop Autobet" : "Start Autobet";
+  });
+</script>
 </body>
 </html>`;
 }
