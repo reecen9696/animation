@@ -22,6 +22,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const anim = require("./anim.js");
+const custom = require("./custom.js");
 const { galleryPage } = require("./gallery.js");
 
 const PORT = process.env.PORT || 4173;
@@ -254,6 +255,92 @@ function loadingPage({ id, presetId, config, debug }) {
 </html>`;
 }
 
+/**
+ * The same stage as loadingPage, for a look lottie draws rather than the
+ * stylesheet. The chrome is identical - black, centred, a way back that comes
+ * up with the cursor - so the two can be compared without the frame changing
+ * around them.
+ */
+function customLoadingPage({ id, debug }) {
+  const m = custom.meta(id);
+  const rows = [["source", esc(m.source)], ["cycle", `${m.cycle}ms`],
+                ["drawn by", "lottie"], ["recoloured", m.recolored ? "yes" : "no"]];
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loading &middot; ${esc(id)}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box }
+  html, body { height: 100% }
+  body { margin: 0; background: #000; overflow: hidden;
+         font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif }
+  .loader { position: fixed; inset: 0; display: grid; place-items: center; z-index: 2 }
+  .stage-lottie { width: clamp(180px, 21vw, 320px); aspect-ratio: 1 }
+  .back {
+    position: fixed; top: 18px; left: 18px; z-index: 4;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 999px; text-decoration: none;
+    font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+    color: rgba(255, 255, 255, .72);
+    background: rgba(6, 8, 10, .72); border: 1px solid rgba(255, 255, 255, .14);
+    backdrop-filter: blur(10px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s ease, color .15s, border-color .15s;
+  }
+  .back.show { opacity: 1; pointer-events: auto }
+  .back:hover { color: #fff; border-color: rgba(255, 255, 255, .4) }
+  .hint {
+    position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%);
+    z-index: 3; pointer-events: none;
+    font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+    color: rgba(255, 255, 255, .5);
+    background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .12);
+    padding: 7px 14px; border-radius: 999px; backdrop-filter: blur(6px);
+    transition: opacity .6s ease;
+  }
+  .hint.gone { opacity: 0 }
+  .hint b { color: rgba(255, 255, 255, .82); font-weight: 600 }
+  .debug {
+    position: fixed; top: 76px; left: 18px; z-index: 3;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; line-height: 1.7; color: rgba(255, 255, 255, .72);
+    background: rgba(6, 8, 10, .92); border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 10px; padding: 12px 14px; min-width: 210px;
+  }
+  .debug h2 { margin: 0 0 8px; font-size: 10px; letter-spacing: .14em;
+              text-transform: uppercase; color: rgba(255, 255, 255, .45) }
+  .debug .row { display: flex; justify-content: space-between; gap: 18px }
+  .debug .row span:last-child { color: #fff }
+</style>
+</head>
+<body>
+  <a class="back" id="back" href="/gallery">&larr; Gallery</a>
+  <div class="loader"><div class="stage-lottie" id="stage"></div></div>
+  <div class="hint" id="hint"><b>${esc(id)}</b> &nbsp;&middot;&nbsp; custom &nbsp;&middot;&nbsp; ${m.cycle}ms</div>
+  ${debug ? `<div class="debug"><h2>${esc(id)}</h2>
+    ${rows.map(r => `<div class="row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("\n    ")}
+  </div>` : ""}
+<script src="/public/lottie.min.js"></script>
+<script>
+  lottie.loadAnimation({
+    container: document.getElementById("stage"), renderer: "svg",
+    loop: true, autoplay: true, animationData: ${JSON.stringify(custom.data(id))}
+  });
+  var hint = document.getElementById("hint");
+  setTimeout(function () { hint.classList.add("gone"); }, 4000);
+  var back = document.getElementById("back"), backTimer;
+  addEventListener("mousemove", function () {
+    back.classList.add("show");
+    clearTimeout(backTimer);
+    backTimer = setTimeout(function () { back.classList.remove("show"); }, 2000);
+  });
+</script>
+</body>
+</html>`;
+}
+
 function indexPage() {
   const card = ([id, c]) => {
     const cycle = anim.cycleOf(c);
@@ -402,6 +489,11 @@ http.createServer((req, res) => {
 
   if (p === "/test" || p.startsWith("/test/")) {
     const id = p === "/test" ? "" : decodeURIComponent(p.slice("/test/".length));
+    /* a custom look is a file, not a config: nothing here can be tuned */
+    if (custom.has(id)) {
+      return send(res, 200, MIME[".html"], customLoadingPage(
+        { id, debug: q.debug === "1" || q.debug === "true" }));
+    }
     // :id selects a preset when it names one; otherwise it is an opaque id.
     const presetId = ALL_PRESETS[id] ? id
       : (ALL_PRESETS[q.preset] ? q.preset

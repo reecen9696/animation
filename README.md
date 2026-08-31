@@ -44,6 +44,10 @@ see them in context.
 - **Track** — the dash on a smaller mark, rolled further (600°, 5.24 widths),
   with a 4px line tucked into the bottom of it that stretches out behind as it
   rolls away and shrinks away as it slows. Outward leg only.
+- **Custom** — looks authored outside this repo and shipped as Lottie JSON,
+  played rather than generated. `dice` is a die tumbling end over end, `pips`
+  is the same file with the body taken out so only the dots remain, and
+  `ghost` is a longer, softer tumble drawn at 21%.
 
 ## Run
 
@@ -61,7 +65,7 @@ No dependencies — Node's stdlib only.
 | `/` | Index of the variants |
 | `/test/:id` | Loading screen: the mark centred on black at ship size, nothing behind it |
 | `/test` | Same, default preset |
-| `/gallery` | Every look side by side, one titled row per family, five across, each with a way through to `/test` |
+| `/gallery` | Every look side by side, one titled row per family, four across, each with a way through to `/test` |
 | `/workbench` | The tuning workbench |
 | `/public/*` | Static assets |
 
@@ -153,6 +157,9 @@ They survive a reload and stay in that browser only.
 | File | Purpose |
 | --- | --- |
 | `anim.js` | The animation maths — curve, per-dot offsets, keyframe generation |
+| `custom.js` | Registry for the Lottie looks — which file, what to recolour, what to drop |
+| `custom/*.json` | The Lottie files as they were delivered, never edited in place |
+| `public/lottie.min.js` | Vendored lottie-web 5.12.2 (light build) that plays them |
 | `server.js` | Dev server and the `/test/:id` route |
 | `build-artifact.js` | Bundles the loading screen into one self-contained HTML file |
 | `scatter-pulse.html` | Tuning workbench (timeline editing, CSV export) |
@@ -161,6 +168,32 @@ They survive a reload and stay in that browser only.
 | `scatter-pulse-times.csv` | Per-dot delays at the default settings |
 | `scatter-pulse-keyframes.csv` | Sampled scale curve |
 | `scatter-pulse.json` | Full config plus per-dot timings |
+
+### Custom looks
+
+Everything else here is CSS keyframes computed from a config, so it can be
+retimed and recoloured from one place. The custom looks cannot — they arrive
+finished. `custom.js` is the seam: it reads the files in `custom/`, reports the
+length off the file rather than a declared number, and hands each page a JSON
+blob to play.
+
+Two things can be changed on the way out, so the delivered file is never edited
+and two looks can share one:
+
+| Field | What it does |
+| --- | --- |
+| `recolor` | `{"#000000": "#FFFFFF"}` — swaps a fill or stroke colour, leaving alpha alone |
+| `hide` | `["Sq"]` — drops every layer whose name starts with one of these |
+
+Both are needed because the two delivered files were authored for opposite
+backgrounds. `Scatter loading v5` is white throughout and vanishes on a light
+page; it is shipped untouched. `Scatter loading (black dice) v6.1` is a black
+die with white pips, so on this black stage the body disappears — `dice` turns
+it round (white body, black pips) and `pips` drops the body outright.
+
+To add one: drop the `.json` in `custom/` and add an entry to `CUSTOM` in
+`custom.js`. It shows up in the gallery, the index and the loading screen's
+switcher without touching anything else.
 
 `anim.js` is the single source of truth: the route and the standalone build
 both render from it, so they cannot drift.

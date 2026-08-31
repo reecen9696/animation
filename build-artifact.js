@@ -8,11 +8,19 @@
  */
 const fs = require("fs");
 const anim = require("./anim.js");
+const custom = require("./custom.js");
+
+/* The custom looks are files, not configs, so they cannot be turned into
+   keyframes: lottie and their JSON are inlined instead. Nothing here is
+   fetched at runtime, which is the whole point of this build. */
+const LOTTIE = fs.readFileSync("public/lottie.min.js", "utf8");
+const CUSTOM_IDS = custom.ids();
 
 const ALL = { ...anim.PRESETS, ...anim.WAVE_PRESETS, ...anim.BUMP_PRESETS, ...anim.ORBIT_PRESETS,
               ...anim.CUBE_PRESETS, ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS,
               ...anim.DROP_PRESETS, ...anim.DASH_PRESETS, ...anim.TRAIL_PRESETS };
 const ids = Object.keys(ALL);
+const allIds = ids.concat(CUSTOM_IDS);   /* panel order and the number keys */
 /* Render what the server would: a preset is a delta on its mode's defaults,
    and resolveConfig is where the two meet. */
 for (const id of ids) ALL[id] = anim.resolveConfig(id, {});
@@ -44,7 +52,11 @@ const meta = ids.map(id => {
     : c.mode === "roll"
     ? `  ${id}: { cycle: ${cycle}, label: "${cycle}ms cycle \\u00b7 ${anim.goDeg(c)}\\u00b0 in ${c.rollMs}ms" }`
     : `  ${id}: { cycle: ${cycle}, label: "${cycle}ms cycle \\u00b7 ${c.travel}ms travel \\u00b7 min ${c.min}" }`;
-}).join(",\n");
+}).join(",\n")
+  + ",\n" + CUSTOM_IDS.map(id => {
+      const m = custom.meta(id);
+      return `  ${id}: { cycle: ${m.cycle}, custom: true, label: "${m.cycle}ms cycle \\u00b7 custom \\u00b7 ${m.source.replace(/"/g, "")}" }`;
+    }).join(",\n");
 
 const html = `<title>Scatter Loading Screen</title>
 <style>
@@ -56,6 +68,11 @@ const html = `<title>Scatter Loading Screen</title>
   }
 
   .loader { position: fixed; inset: 0; display: grid; place-items: center; z-index: 2 }
+  /* A custom look swaps the generated mark out for a lottie mount; only ever
+     one of the two is in the layout. */
+  .stage-lottie { display: none; width: clamp(180px, 21vw, 320px); aspect-ratio: 1 }
+  body[data-custom] .scatter-mark, body[data-custom] .scatter-mark-rig { display: none }
+  body[data-custom] .stage-lottie { display: block }
   .scatter-mark {
     width: clamp(100px, 11.4vw, 180px); height: auto; display: block;
     overflow: visible; color: #fff;
@@ -127,14 +144,17 @@ ${blocks}
 
 <div class="loader">
   ${anim.markSvg({ ...anim.CUBE_PRESETS.tumble, trail: 4 }, "scatter-mark")}
+  <div class="stage-lottie" id="stage-lottie"></div>
 </div>
 
 <div class="panel" id="panel">
-${ids.map(id => `  <button data-preset="${id}" aria-pressed="${id === "pulse"}">${id}</button>`).join("\n")}
+${allIds.map(id => `  <button data-preset="${id}" aria-pressed="${id === "pulse"}">${id}</button>`).join("\n")}
   <span class="readout" id="readout"></span>
 </div>
 
+<script>${LOTTIE}</script>
 <script>
+  var CUSTOM = ${JSON.stringify(custom.bundle())};
   var META = {
 ${meta}
   };
@@ -151,8 +171,22 @@ ${meta}
     backTimer = setTimeout(function () { back.classList.remove("show"); }, 2000);
   });
 
+  /* One player, reloaded on each switch: the JSON is already in memory, so
+     rebuilding is cheap and it guarantees the look starts on frame one. */
+  var mount = document.getElementById("stage-lottie"), player;
+  function showCustom(id) {
+    if (player) { player.destroy(); player = null; }
+    if (!CUSTOM[id]) { document.body.removeAttribute("data-custom"); return; }
+    document.body.setAttribute("data-custom", id);
+    player = lottie.loadAnimation({
+      container: mount, renderer: "svg", loop: true, autoplay: true,
+      animationData: CUSTOM[id]
+    });
+  }
+
   function select(id) {
     document.body.setAttribute("data-preset", id);
+    showCustom(id);
     var b = panel.querySelectorAll("button"), i;
     for (i = 0; i < b.length; i++) {
       b[i].setAttribute("aria-pressed", String(b[i].getAttribute("data-preset") === id));
@@ -179,7 +213,7 @@ ${meta}
 
   document.addEventListener("keydown", function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    var keys = ${JSON.stringify(ids)};
+    var keys = ${JSON.stringify(allIds)};
     var n = parseInt(e.key, 10);
     if (n >= 1 && n <= keys.length) select(keys[n - 1]);
   });

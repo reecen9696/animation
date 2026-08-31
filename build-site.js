@@ -6,6 +6,7 @@
  */
 const fs = require("fs");
 const anim = require("./anim.js");
+const custom = require("./custom.js");
 
 const GROUPS = [
   { name: "Pulse",   blurb: "A wave crossing the mark on the top-left to bottom-right diagonal.", set: anim.PRESETS },
@@ -20,6 +21,15 @@ const GROUPS = [
   { name: "Track",   blurb: "The dash on a smaller mark, rolled further, with a line trailing under it on the way out.", set: anim.TRAIL_PRESETS }
 ];
 
+/* Custom looks are authored elsewhere and arrive as Lottie, so they have no
+   config to summarise - their card carries the source file and the length
+   read off it instead. */
+const CUSTOM_GROUP = {
+  name: "Custom",
+  blurb: "Animations authored outside this repo and shipped as Lottie JSON, "
+       + "played rather than generated. Drop a file in custom/ to add one."
+};
+
 const summarise = c => {
   const cycle = anim.cycleOf(c);
   if (c.mode === "dash")  return `${cycle}ms &middot; ${anim.goDeg(c)}&deg; &middot; ${c.dashX.toFixed(2)} widths`;
@@ -30,6 +40,19 @@ const summarise = c => {
   if (c.mode === "orbit") return `${cycle}ms &middot; ${c.turns * 360}&deg; spin`;
   return `${cycle}ms &middot; ${c.pulse}ms pulse`;
 };
+
+const customSection = `
+    <section class="group">
+      <h2>${CUSTOM_GROUP.name}</h2>
+      <p class="blurb">${CUSTOM_GROUP.blurb}</p>
+      <div class="chips">
+        ${custom.ids().map(id => {
+          const m = custom.meta(id);
+          return `<a class="chip" href="loading-screen.html#${id}"><b>${id}</b>`
+               + `<span>${m.cycle}ms &middot; lottie</span></a>`;
+        }).join("\n        ")}
+      </div>
+    </section>`;
 
 const groups = GROUPS.map(g => `
     <section class="group">
@@ -111,13 +134,13 @@ const html = `<!doctype html>
 <div class="wrap">
   <div class="eyebrow">Motion study &middot; navbar mark</div>
   <h1>Scatter mark</h1>
-  <p class="lede">${GROUPS.length} ways to animate the seven-dot mark, each shown on black at the
+  <p class="lede">${GROUPS.length + 1} ways to animate the seven-dot mark, each shown on black at the
      size it ships at, with nothing behind it. Every variant below is a direct link.</p>
 
   <div class="tools">
     <a class="tool" href="loading-screen.html">
       <h3>Loading screen &rarr;</h3>
-      <p>All ${GROUPS.reduce((n, g) => n + Object.keys(g.set).length, 0)} variants on black, with a switcher. Press 1&ndash;9 to compare.</p>
+      <p>All ${GROUPS.reduce((n, g) => n + Object.keys(g.set).length, 0) + custom.ids().length} variants on black, with a switcher. Press 1&ndash;9 to compare.</p>
     </a>
     <a class="tool" href="gallery.html">
       <h3>Shortlist &rarr;</h3>
@@ -129,6 +152,7 @@ const html = `<!doctype html>
     </a>
   </div>
 ${groups}
+${customSection}
 
   <footer>
     Built as plain HTML, CSS and vanilla JavaScript &mdash; no framework, no build step.

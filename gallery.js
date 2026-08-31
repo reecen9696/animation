@@ -6,6 +6,7 @@
  * points, which the caller supplies.
  */
 const anim = require("./anim.js");
+const custom = require("./custom.js");
 
 const esc = s => String(s).replace(/[&<>"']/g, ch =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -31,7 +32,10 @@ const GALLERY = [
   { mode: "Smear", ids: ["smear", "hard"] },
   { mode: "Teardrop", ids: ["ink"] },
   { mode: "Dash", ids: ["dash"], wide: true },
-  { mode: "Track", ids: ["track"], wide: true }
+  { mode: "Track", ids: ["track"], wide: true },
+  /* Authored elsewhere and shipped as Lottie rather than generated here, so
+     this row is whatever is sitting in custom/ - see custom.js. */
+  { mode: "Custom", ids: custom.ids() }
 ];
 
 function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
@@ -41,6 +45,7 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   const rows = GALLERY.map(group => ({
     mode: group.mode,
     cells: group.ids.map(id => {
+      if (custom.has(id)) return { id, lottie: custom.meta(id) };
       const c = anim.resolveConfig(id, {});
       const sfx = "_" + id.replace(/[^a-z0-9]/gi, "");
       css.push(anim.animCss(c, ".mark", ".mark .dot", sfx, `#c-${id}`));
@@ -53,8 +58,10 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
      mark for a second; `Autobet` runs it alongside the label until it is
      stopped. Both reuse the card's own animation - the SVG carries the same
      class the keyframes are scoped to, so it cannot drift from the big one. */
-  const uiButtons = config => {
-    const spin = anim.markSvg({ ...config, trail: 0 }, "mark");
+  const uiButtons = (config, lottieId) => {
+    const spin = lottieId
+      ? `<span class="lottie" data-anim="${esc(lottieId)}"></span>`
+      : anim.markSvg({ ...config, trail: 0 }, "mark");
     return `
         <div class="ui">
           <button class="ui-btn" type="button" data-role="bet" aria-label="Bet">
@@ -68,7 +75,21 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
         </div>`;
   };
 
-  const card = ({ id, config }) => {
+  const card = ({ id, config, lottie }) => {
+    if (lottie) {
+      /* Nothing to scope keyframes to: lottie draws it, so the card is a
+         mount, and the same mount again inside each button. */
+      return `
+      <article class="cell" id="c-${id}">
+        <h3 class="name">${esc(id)}</h3>
+        <div class="stage">
+          <div class="lottie stage-lottie" data-anim="${esc(id)}"
+               title="${esc(lottie.source)}"></div>
+        </div>
+        ${uiButtons(null, id)}
+        <a class="btn" href="${esc(testHref(id))}">Test loading</a>
+      </article>`;
+    }
     /* The row heading names the family, so the card only has to name the look.
        It sits above the stage: the eye finds the name before the motion, and
        every card below a heading then reads top-down in the same order. */
@@ -103,6 +124,7 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
 
   /* Each family is its own heading and its own grid, so a row never runs on
      into the next one and the five-across rhythm restarts at every title. */
+  const customJson = JSON.stringify(custom.bundle());
   const sections = rows.map(row => `
   <section class="row">
     <h2>${esc(row.mode)} <span>${row.cells.length}</span></h2>
@@ -172,6 +194,12 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   .ui-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
   .ui-spin{display:none;flex:none;line-height:0}
   .ui-btn .mark{width:22px;filter:none}
+
+  /* A lottie draws itself inside a box rather than to the edge of one, so its
+     mount is set larger than the mark to land on the same optical size. */
+  .lottie{display:block;width:150px;height:150px}
+  .ui-btn .lottie{width:38px;height:38px}
+  .ui-btn .lottie svg{display:block}
   /* Bet swaps its label out; autobet keeps it and runs the mark to its left. */
   .ui-btn.loading .ui-text{display:none}
   .ui-btn.loading .ui-spin,.ui-btn.on .ui-spin{display:block}
@@ -209,7 +237,34 @@ ${sections}
     numbers; tune new ones in the <a href="/workbench">workbench</a>.
   </div>
 </div>
+<script src="public/lottie.min.js"></script>
 <script>
+  /* The custom looks arrive as finished JSON rather than as keyframes, so they
+     are inlined here and played rather than declared in the stylesheet. */
+  var CUSTOM = ${customJson};
+
+  function player(el) {
+    if (!el._anim) {
+      el._anim = lottie.loadAnimation({
+        container: el, renderer: "svg", loop: true, autoplay: true,
+        animationData: CUSTOM[el.getAttribute("data-anim")]
+      });
+    }
+    return el._anim;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".lottie"), player);
+
+  /* A CSS animation restarts on its own when an element stops being
+     display:none; a lottie has to be told, and has to be measured again
+     because it had no size to lay itself out in while it was hidden. */
+  function restart(btn) {
+    Array.prototype.forEach.call(btn.querySelectorAll(".lottie"), function (el) {
+      var a = player(el);
+      a.resize();
+      a.goToAndPlay(0, true);
+    });
+  }
+
   /* One listener for the whole page: the cards are identical, so the only
      thing that varies is which button was hit. Both states are a class - the
      mark is display:none until then, and an element that has just stopped
@@ -222,6 +277,7 @@ ${sections}
       if (b.classList.contains("loading")) return;
       b.classList.add("loading");
       b.setAttribute("aria-busy", "true");
+      restart(b);
       setTimeout(function () {
         b.classList.remove("loading");
         b.removeAttribute("aria-busy");
@@ -230,6 +286,7 @@ ${sections}
     }
     var on = b.classList.toggle("on");
     b.querySelector(".ui-text").textContent = on ? "Stop Autobet" : "Start Autobet";
+    if (on) restart(b);
   });
 </script>
 </body>
