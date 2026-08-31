@@ -277,9 +277,10 @@ function customLoadingPage({ id, debug }) {
   body { margin: 0; background: #000; overflow: hidden;
          font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif }
   .loader { position: fixed; inset: 0; display: grid; place-items: center; z-index: 2 }
-  .stage-lottie { width: clamp(180px, 21vw, 320px); aspect-ratio: 1 }
+  .stage-lottie { width: clamp(180px, 21vw, 320px); aspect-ratio: 1; position: relative }
+  .stage-lottie .scene, .stage-lottie .lottie { position: relative; width: 100%; height: 100% }
   ${custom.mountScale(id) < 1 ? ".stage-lottie { width: clamp(132px, 15vw, 236px) }" : ""}
-  ${custom.jumpCss(id, "", "_" + id) || ""}
+  ${custom.motionCss(id, "", "_" + id) || ""}
   .back {
     position: fixed; top: 18px; left: 18px; z-index: 4;
     display: inline-flex; align-items: center; gap: 8px;
@@ -319,17 +320,22 @@ function customLoadingPage({ id, debug }) {
 </head>
 <body>
   <a class="back" id="back" href="/gallery">&larr; Gallery</a>
-  <div class="loader"><div class="stage-lottie lottie" id="stage" data-anim="${esc(id)}"></div></div>
+  <div class="loader"><div class="stage-lottie" id="stage-box">${
+    custom.markup(id) || `<div class="lottie" id="stage" data-anim="${esc(id)}"></div>`
+  }</div></div>
   <div class="hint" id="hint"><b>${esc(id)}</b> &nbsp;&middot;&nbsp; custom &nbsp;&middot;&nbsp; ${m.cycle}ms</div>
   ${debug ? `<div class="debug"><h2>${esc(id)}</h2>
     ${rows.map(r => `<div class="row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("\n    ")}
   </div>` : ""}
 <script src="/public/lottie.min.js"></script>
 <script>
-  lottie.loadAnimation({
-    container: document.getElementById("stage"), renderer: "svg",
-    loop: true, autoplay: true, animationData: ${JSON.stringify(custom.data(id))}
+  var still = ${JSON.stringify(custom.stills()[id] === undefined ? null : custom.stills()[id])};
+  var player = lottie.loadAnimation({
+    container: document.querySelector("#stage-box .lottie"), renderer: "svg",
+    loop: still === null, autoplay: still === null,
+    animationData: ${JSON.stringify(custom.data(id))}
   });
+  if (still !== null) player.goToAndStop(still, true);
   var hint = document.getElementById("hint");
   setTimeout(function () { hint.classList.add("gone"); }, 4000);
   var back = document.getElementById("back"), backTimer;

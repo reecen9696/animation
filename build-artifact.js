@@ -71,7 +71,8 @@ const html = `<title>Scatter Loading Screen</title>
   /* A custom look swaps the generated mark out for a lottie mount; only ever
      one of the two is in the layout. */
   .stage-lottie { display: none; width: clamp(180px, 21vw, 320px); aspect-ratio: 1 }
-${CUSTOM_IDS.map(id => custom.jumpCss(id, "body", "_" + id)).filter(Boolean).join("\n")}
+  .stage-lottie .scene { position: relative; width: 100%; height: 100% }
+${CUSTOM_IDS.map(id => custom.motionCss(id, "body", "_" + id)).filter(Boolean).join("\n")}
   /* a look that hops is drawn smaller so its arc has somewhere to go */
 ${CUSTOM_IDS.filter(id => custom.mountScale(id) < 1).map(id =>
   `  body[data-custom="${id}"] .stage-lottie { width: clamp(132px, 15vw, 236px) }`).join("\n")}
@@ -159,6 +160,10 @@ ${allIds.map(id => `  <button data-preset="${id}" aria-pressed="${id === "pulse"
 <script>${LOTTIE}</script>
 <script>
   var CUSTOM = ${JSON.stringify(custom.bundle())};
+  var STILL = ${JSON.stringify(custom.stills())};   /* held on one frame; CSS moves them */
+  /* Looks that need more around them than a single mark. */
+  var SCENE = ${JSON.stringify(Object.fromEntries(
+      CUSTOM_IDS.map(id => [id, custom.markup(id)]).filter(([, m]) => m)))};
   var META = {
 ${meta}
   };
@@ -183,10 +188,17 @@ ${meta}
     if (!CUSTOM[id]) { document.body.removeAttribute("data-custom"); return; }
     document.body.setAttribute("data-custom", id);
     mount.setAttribute("data-anim", id);
+    var still = STILL[id];
+    /* A scene supplies its own markup; the player then goes in the mount it
+       names rather than straight into the stage. */
+    mount.innerHTML = SCENE[id] || "";
+    var host = SCENE[id] ? mount.querySelector(".lottie") : mount;
     player = lottie.loadAnimation({
-      container: mount, renderer: "svg", loop: true, autoplay: true,
+      container: host, renderer: "svg",
+      loop: still === undefined, autoplay: still === undefined,
       animationData: CUSTOM[id]
     });
+    if (still !== undefined) player.goToAndStop(still, true);
   }
 
   function select(id) {

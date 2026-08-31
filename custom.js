@@ -24,8 +24,15 @@ const DIR = path.join(__dirname, "custom");
  * modifier sitting after the path, whose radius the file animates 40 -> 80 ->
  * 40 as it rolls. Setting it pins that to one value.
  *
- * `freeze` holds the animation on one frame, so the file becomes a still. The
- * die at frame 0 is the flat mark, and nothing is redrawn after that.
+ * `freeze` names the one frame a look is held on. It is not done by trimming
+ * the file - cutting it to `op: 1` leaves lottie looping frames 0 to 1, so the
+ * drawing keeps interpolating a fraction of a frame and visibly shivers. The
+ * page has to stop the clock instead: it loads a still with autoplay off and
+ * parks it with goToAndStop. See `stills()`.
+ *
+ * `portal` builds a small scene around the still instead of just moving it:
+ * a white disc on the floor that opens and shuts, and a die that comes up
+ * through it, bounces, and drops back through. See `portalCss`.
  *
  * `jump` then throws that still in the air and turns it, as CSS on the mount:
  * up, one whole turn while airborne, down, landing on the orientation it left
@@ -109,9 +116,25 @@ const CUSTOM = {
         + "it lands back flat. No roll and no squash - it is a solid object.",
     recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
     dots: DECLUTTER,
-    round: 118,
+    round: 74,
     freeze: 0,
     jump: { ms: 1400, lift: 42, turn: 360, up: 0.12, down: 0.88, mount: 0.72 }
+  },
+  /* A scene rather than a single moving mark. The disc on the floor is the
+     way in and out: it opens, the die rises through it, it shuts behind it,
+     the die drops and bounces twice, the disc opens again under it on the
+     second bounce, and the die falls back through before it shuts. Everything
+     below the floor line is clipped, so the disc really does read as a hole. */
+  portal: {
+    file: "dice.json",
+    source: "Scatter loading (black dice) v6.1 - 1 sec, frame 0",
+    note: "The flat die coming up through a hole in the floor, bouncing twice "
+        + "and dropping back through it. The disc opens and shuts around it.",
+    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
+    dots: DECLUTTER,
+    round: 74,
+    freeze: 0,
+    portal: { ms: 4200, floor: 0.70, die: 0.40, disc: 0.88, lift: 150, turn: 720 }
   },
   ghost: {
     file: "ghost.json",
@@ -213,18 +236,12 @@ function data(id) {
   if (CUSTOM[id].hide) applyHide(d, CUSTOM[id].hide);
   if (CUSTOM[id].dots) applyDots(d, CUSTOM[id].dots);
   if (CUSTOM[id].round !== undefined) applyRound(d, CUSTOM[id].round);
-  if (CUSTOM[id].freeze !== undefined) {
-    /* One frame long, so lottie draws that frame and never moves off it. The
-       motion comes from CSS instead. */
-    d.ip = CUSTOM[id].freeze;
-    d.op = CUSTOM[id].freeze + 1;
-  }
   return d;
 }
 
 /** How long one loop runs, in ms, read off the file rather than declared. */
 function cycleOf(id) {
-  const j = CUSTOM[id] && CUSTOM[id].jump;
+  const j = (CUSTOM[id] && (CUSTOM[id].jump || CUSTOM[id].portal));
   if (j) return j.ms;                    /* a still's length is its own arc */
   const d = raw(id);
   const fr = d.fr || 30;
@@ -244,41 +261,158 @@ const meta = id => ({
 const bundle = () => Object.fromEntries(ids().map(id => [id, data(id)]));
 
 /**
- * The jump, as CSS on the mount. Height and rotation are sampled along the
- * airborne stretch rather than left to two keyframes, so the arc is an actual
- * parabola - slowing into the top, gathering on the way down - instead of an
- * even glide, and the turn runs at a constant rate underneath it.
+ * The jump, as CSS on the mount.
  *
- * It sits still on the ground either side of the throw, which is what gives
- * the loop a beat rather than making it a continuous churn.
+ * Height and turn want different easing - the throw slows into the top and
+ * gathers on the way down, while the turn runs at one rate throughout - and a
+ * single transform cannot ease its parts separately. So the height rides on
+ * the mount and the turn on the SVG inside it, which is two elements and two
+ * timing functions. Three keyframes each, eased, rather than a sampled
+ * polyline: the curve is then the browser's to draw and is properly smooth.
+ *
+ * It sits still on the ground either side of the throw, which gives the loop a
+ * beat instead of making it a continuous churn.
  */
 function jumpCss(id, scope, suffix = "") {
   const j = CUSTOM[id] && CUSTOM[id].jump;
   if (!j) return null;
   const S = scope ? scope + " " : "";
-  const STEPS = 16;
-  const keys = [[0, 0, 0]];
-  for (let i = 0; i <= STEPS; i++) {
-    const u = i / STEPS;                       /* 0..1 across the airborne part */
-    const t = j.up + u * (j.down - j.up);
-    const h = j.lift * (1 - Math.pow(2 * u - 1, 2));   /* parabola, 0 at both ends */
-    keys.push([t, h, j.turn * u]);
-  }
-  keys.push([1, 0, j.turn]);
-  const frames = keys.map(([t, h, deg]) =>
-    `  ${(t * 100).toFixed(2)}% { transform: translateY(-${h.toFixed(2)}%) rotate(${deg.toFixed(2)}deg) }`
-  ).join("\n");
+  const pc = t => (t * 100).toFixed(2) + "%";
+  /* leaving the ground fast and arriving slow, then the mirror of it */
+  const UP = "cubic-bezier(.12,.62,.30,1)";
+  const DOWN = "cubic-bezier(.70,0,.88,.38)";
 
   return `${S}.lottie[data-anim="${id}"] {
-    animation: customJump${suffix} ${j.ms}ms linear infinite both;
+    animation: customLift${suffix} ${j.ms}ms infinite both;
+    will-change: transform;
   }
-@keyframes customJump${suffix} {
-${frames}
+${S}.lottie[data-anim="${id}"] svg {
+    animation: customTurn${suffix} ${j.ms}ms linear infinite both;
+    will-change: transform;
+  }
+@keyframes customLift${suffix} {
+  0%, ${pc(j.up)} { transform: translateY(0); animation-timing-function: ${UP} }
+  ${pc((j.up + j.down) / 2)} { transform: translateY(-${j.lift}%); animation-timing-function: ${DOWN} }
+  ${pc(j.down)}, 100% { transform: translateY(0) }
+}
+@keyframes customTurn${suffix} {
+  0%, ${pc(j.up)} { transform: rotate(0deg) }
+  ${pc(j.down)}, 100% { transform: rotate(${j.turn}deg) }
 }`;
 }
+
+/**
+ * The scene a look needs around it, or null for one that is just a mark. The
+ * mount keeps the class the player looks for, so the die inside is loaded and
+ * parked exactly like any other still.
+ */
+function markup(id, cls = "") {
+  if (!(CUSTOM[id] && CUSTOM[id].portal)) return null;
+  /* Only the inner mount carries `lottie` - that is what the page hunts for
+     to load a player, and the wrapper is not one. */
+  return `<div class="scene${cls ? " " + cls : ""}" data-scene="${id}">`
+       + `<span class="scene-clip">`
+       +   `<span class="scene-die"><span class="lottie" data-anim="${id}"></span></span>`
+       + `</span>`
+       + `<i class="scene-disc"></i>`
+       + `</div>`;
+}
+
+/** `{ id: frame }` for looks the page must park rather than play. */
+const stills = () => Object.fromEntries(ids()
+  .filter(id => CUSTOM[id].freeze !== undefined)
+  .map(id => [id, CUSTOM[id].freeze]));
+
+/**
+ * The portal scene, as CSS.
+ *
+ * Three things run on the same clock: the die's height, its turn, and the
+ * disc's opening. They are separate elements so each can carry its own easing
+ * - the die falls on a gravity curve, the disc opens on a soft one, the turn
+ * is even throughout. The clip is what sells it: its bottom edge is the floor
+ * line, so a die pushed below that is not drawn at all, and the disc sits over
+ * the seam so nothing can be caught crossing it.
+ *
+ * Heights are percentages of the die's own box, so the scene scales whole.
+ */
+function portalCss(id, scope, suffix = "") {
+  const p = CUSTOM[id] && CUSTOM[id].portal;
+  if (!p) return null;
+  const S = scope ? scope + " " : "";
+  const DOWN = "cubic-bezier(.6,0,.9,.4)";     /* gathering: a fall */
+  const UP   = "cubic-bezier(.1,.7,.3,1)";     /* shedding speed: a rise */
+  const SOFT = "cubic-bezier(.4,0,.2,1)";
+  const below = p.lift;                        /* far enough under to be clipped */
+
+  return `${S}.scene[data-scene="${id}"] { position: relative; overflow: visible }
+${S}.scene[data-scene="${id}"] .scene-clip {
+    position: absolute; left: 0; right: 0; top: -60%;
+    height: ${(p.floor * 100 + 60).toFixed(1)}%;
+    overflow: hidden; pointer-events: none;
+  }
+${S}.scene[data-scene="${id}"] .scene-die {
+    position: absolute; left: 50%; bottom: 0;
+    width: ${(p.die * 100).toFixed(1)}%; aspect-ratio: 1;
+    margin-left: ${(-p.die * 50).toFixed(1)}%;
+    animation: scLift${suffix} ${p.ms}ms infinite both;
+    will-change: transform;
+  }
+${S}.scene[data-scene="${id}"] .scene-die .lottie { width: 100%; height: 100% }
+${S}.scene[data-scene="${id}"] .scene-die svg {
+    display: block; width: 100%; height: 100%;
+    animation: scTurn${suffix} ${p.ms}ms linear infinite both;
+    will-change: transform;
+  }
+${S}.scene[data-scene="${id}"] .scene-disc {
+    position: absolute; left: 50%; top: ${(p.floor * 100).toFixed(1)}%;
+    width: ${(p.disc * 100).toFixed(1)}%; aspect-ratio: 12 / 1;
+    margin-left: ${(-p.disc * 50).toFixed(1)}%;
+    background: #fff; border-radius: 50%;
+    transform: translateY(-50%) scale(0);
+    animation: scDisc${suffix} ${p.ms}ms infinite both;
+    will-change: transform;
+  }
+
+/* Height. 0 rests on the floor line; positive is under it and clipped away.
+   The two bounces are only a little shorter than the throw that starts it, so
+   it keeps its energy rather than dying away over the cycle. */
+@keyframes scLift${suffix} {
+  0%, 6%     { transform: translateY(${below}%); animation-timing-function: ${UP} }
+  26%        { transform: translateY(-96%); animation-timing-function: ${DOWN} }
+  40%        { transform: translateY(0); animation-timing-function: ${UP} }
+  50%        { transform: translateY(-84%); animation-timing-function: ${DOWN} }
+  60%        { transform: translateY(0); animation-timing-function: ${UP} }
+  70%        { transform: translateY(-74%); animation-timing-function: ${DOWN} }
+  80%        { transform: translateY(0); animation-timing-function: ${DOWN} }
+  90%, 100%  { transform: translateY(${below}%) }
+}
+
+/* One long turn while it is out, then held so it comes back up square. */
+@keyframes scTurn${suffix} {
+  0%, 6%    { transform: rotate(0deg) }
+  80%       { transform: rotate(${p.turn}deg) }
+  100%      { transform: rotate(${p.turn}deg) }
+}
+
+/* Open, shut behind it, open again under the second bounce, shut after. */
+@keyframes scDisc${suffix} {
+  0%       { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
+  5%       { transform: translateY(-50%) scale(1) }
+  22%      { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
+  29%      { transform: translateY(-50%) scale(0) }
+  60%      { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
+  66%      { transform: translateY(-50%) scale(1) }
+  92%      { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
+  97%, 100%{ transform: translateY(-50%) scale(0) }
+}`;
+}
+
+/** Whichever motion a look carries, as CSS. */
+const motionCss = (id, scope, suffix) =>
+  jumpCss(id, scope, suffix) || portalCss(id, scope, suffix);
 
 /** How big to draw the mount: a look that jumps needs headroom above it. */
 const mountScale = id => (CUSTOM[id] && CUSTOM[id].jump && CUSTOM[id].jump.mount) || 1;
 
 module.exports = { CUSTOM, ids, has, raw, data, cycleOf, meta, bundle,
-                   jumpCss, mountScale, DIR };
+                   jumpCss, portalCss, motionCss, markup, mountScale, stills, DIR };

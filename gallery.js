@@ -47,8 +47,8 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
     cells: group.ids.map(id => {
       if (custom.has(id)) {
         /* a look that hops carries a CSS arc over the top of its own roll */
-        const hop = custom.jumpCss(id, `#c-${id}`, "_" + id);
-        if (hop) css.push(hop);
+        const motion = custom.motionCss(id, `#c-${id}`, "_" + id);
+        if (motion) css.push(motion);
         return { id, lottie: custom.meta(id) };
       }
       const c = anim.resolveConfig(id, {});
@@ -65,7 +65,8 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
      class the keyframes are scoped to, so it cannot drift from the big one. */
   const uiButtons = (config, lottieId) => {
     const spin = lottieId
-      ? `<span class="lottie" data-anim="${esc(lottieId)}"></span>`
+      ? (custom.markup(lottieId)
+         || `<span class="lottie" data-anim="${esc(lottieId)}"></span>`)
       : anim.markSvg({ ...config, trail: 0 }, "mark");
     return `
         <div class="ui">
@@ -87,10 +88,10 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
       return `
       <article class="cell" id="c-${id}">
         <h3 class="name">${esc(id)}</h3>
-        <div class="stage">
-          <div class="lottie stage-lottie" data-anim="${esc(id)}"${
-            custom.mountScale(id) < 1 ? " data-hop" : ""}
-               title="${esc(lottie.source)}"></div>
+        <div class="stage" title="${esc(lottie.source)}">
+          ${custom.markup(id, "stage-scene")
+            || `<div class="lottie stage-lottie" data-anim="${esc(id)}"${
+                 custom.mountScale(id) < 1 ? " data-hop" : ""}></div>`}
         </div>
         ${uiButtons(null, id)}
         <a class="btn" href="${esc(testHref(id))}">Test loading</a>
@@ -206,6 +207,9 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   .lottie{display:block;width:150px;height:150px}
   /* a hopping look is drawn smaller so the card has headroom for the arc */
   .stage-lottie[data-hop]{width:112px;height:112px}
+  /* a scene is a box the look arranges itself inside */
+  .stage-scene{width:150px;height:150px;position:relative}
+  .ui-btn .scene{width:40px;height:40px;position:relative;flex:none}
   .ui-btn .lottie{width:38px;height:38px}
   .ui-btn .lottie svg{display:block}
   /* Bet swaps its label out; autobet keeps it and runs the mark to its left. */
@@ -250,13 +254,21 @@ ${sections}
   /* The custom looks arrive as finished JSON rather than as keyframes, so they
      are inlined here and played rather than declared in the stylesheet. */
   var CUSTOM = ${customJson};
+  /* Looks held on one frame. Trimming the file to a single frame does not do
+     it - lottie then loops frames 0 to 1 and the drawing shivers - so the
+     clock is stopped here instead and the motion left to CSS. */
+  var STILL = ${JSON.stringify(custom.stills())};
 
   function player(el) {
     if (!el._anim) {
+      var id = el.getAttribute("data-anim");
+      var still = STILL[id];
       el._anim = lottie.loadAnimation({
-        container: el, renderer: "svg", loop: true, autoplay: true,
-        animationData: CUSTOM[el.getAttribute("data-anim")]
+        container: el, renderer: "svg",
+        loop: still === undefined, autoplay: still === undefined,
+        animationData: CUSTOM[id]
       });
+      if (still !== undefined) el._anim.goToAndStop(still, true);
     }
     return el._anim;
   }
@@ -269,7 +281,7 @@ ${sections}
     Array.prototype.forEach.call(btn.querySelectorAll(".lottie"), function (el) {
       var a = player(el);
       a.resize();
-      a.goToAndPlay(0, true);
+      if (STILL[el.getAttribute("data-anim")] === undefined) a.goToAndPlay(0, true);
     });
   }
 
