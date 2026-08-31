@@ -110,7 +110,7 @@ const CUSTOM = {
     freeze: 0,
     /* Heights are fractions of the scene box, not of the die - so the die can
        be resized without the throw changing shape or climbing out of frame. */
-    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
+    portal: { sink: 0.128, ms: 3200, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
               apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 720 }
   },
   /* The same throw with no way in or out: the floor is just a line the die
@@ -123,7 +123,7 @@ const CUSTOM = {
         + "disc opening for it.",
     recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
     dots: DECLUTTER, round: 74, freeze: 0,
-    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0, thin: 17,
+    portal: { sink: 0.128, ms: 3200, floor: 0.86, die: 0.60, disc: 0, thin: 17,
               apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 720 }
   },
   /* The chute again - no disc, just a floor it drops past - carrying the pips
@@ -148,7 +148,7 @@ const CUSTOM = {
        the square root of the height, so the heights buy the time and the cycle
        makes up the difference - 1127ms and 1355ms between contacts, which is
        a whole roll each without hurrying it. */
-    portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
+    portal: { sink: 0.263, ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
               apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
               turnFromApex: true, impactRoll: true, rollEnd: 26, rollFrac: [0.77, 0.60] }
   },
@@ -163,7 +163,7 @@ const CUSTOM = {
         + "through it, rolling only where they hit.",
     recolor: { "#F3F3F3": "#FFFFFF" },
     hide: ["Sq"], freeze: 0,
-    portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
+    portal: { sink: 0.263, ms: 4600, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
               apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
               turnFromApex: true, impactRoll: true, rollEnd: 26, rollFrac: [0.77, 0.60] }
   },
@@ -179,9 +179,29 @@ const CUSTOM = {
     recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
     round: 100,
     freeze: 0,
-    portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
+    portal: { sink: 0.128, ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
               apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
               turnEven: true, impactRoll: true, rollEnd: 26, rollFrac: [0.77, 0.60] }
+  },
+  /* chutedice grounded by a contact shadow: a soft pool of light fixed on the
+     floor beneath the die, tight and bright at each landing, smaller and
+     fainter the higher it flies, swallowed with the die as it drops out. Its
+     keys sit on the same derived marks as the throw, so it tracks the height
+     exactly rather than approximately. */
+  chuteshadow: {
+    file: "dice.json",
+    source: "Scatter loading (black dice) v6.1 - 1 sec",
+    note: "The whole die dropping through the floor, grounded by a soft "
+        + "contact shadow that breathes with the bounce.",
+    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
+    round: 100,
+    freeze: 0,
+    portal: { sink: 0.285, inkGap: 0.128, ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
+              apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
+              turnEven: true, impactRoll: true, rollEnd: 26,
+              rollFrac: [0.77, 0.60],
+              shadow: { scale: 0.34, opacity: 0.92, far: 0.38, grey: 0.14,
+                        width: 0.84, shrinkX: 0.78, shrinkY: 0.42 } }
   },
   ghost: {
     file: "ghost.json",
@@ -342,10 +362,11 @@ function markup(id, cls = "") {
   if (!(CUSTOM[id] && CUSTOM[id].portal)) return null;
   /* Only the inner mount carries `lottie` - that is what the page hunts for
      to load a player, and the wrapper is not one. */
+  const die = `<span class="scene-die"><span class="lottie" data-anim="${id}"></span></span>`;
   return `<div class="scene${cls ? " " + cls : ""}" data-scene="${id}">`
-       + `<span class="scene-clip">`
-       +   `<span class="scene-die"><span class="lottie" data-anim="${id}"></span></span>`
-       + `</span>`
+       /* The shadow sits under everything, so the die crosses over it. */
+       + (CUSTOM[id].portal.shadow ? `<span class="scene-shade">${die}</span>` : "")
+       + `<span class="scene-clip">${die}</span>`
        + (CUSTOM[id].portal.disc > 0 ? `<i class="scene-disc"></i>` : "")
        + `</div>`;
 }
@@ -457,14 +478,82 @@ ${p.turnEven
   ${pc(gone)}, 100% { transform: rotate(${p.turn}deg) }
 }` : "";
 
+  /* `sink` beyond the ink gap pushes the die's artwork below the floor line
+     at a landing; the clip has to follow it down by that overhang or it
+     slices the bottom off the die at every contact. The entry and exit still
+     swallow cleanly - the parked position is far deeper than the overhang. */
+  const over = Math.max(0, (p.sink || 0) - (p.inkGap === undefined ? (p.sink || 0) : p.inkGap)) * p.die;
+  const clipH = p.floor + 0.80 + over;
   return `${S}.scene[data-scene="${id}"] { position: relative; overflow: visible }
 ${S}.scene[data-scene="${id}"] .scene-clip {
     position: absolute; left: 0; right: 0; top: -80%;
+    height: ${(clipH * 100).toFixed(1)}%;
+    overflow: hidden; pointer-events: none;
+    z-index: 1;                 /* the die always paints over its shadow */
+  }
+${(() => {
+    const sh = p.shadow;
+    if (!sh) return "";
+    /* The die again, turned over about the floor line and squashed - so the
+       bounce, the roll and the turn all come mirrored for free, the spin
+       running the opposite way as a reflection's should. Flattened to one
+       tone: brightness(0) floors every pixel to black, invert(grey) lifts it
+       to the shadow tone, both leaving alpha alone, so body and pips read as
+       one silhouette.
+
+       On top of the mirror, the whole reflection breathes with the die's
+       height: scaled about the floor point on the same derived marks and the
+       same quadratic easings as the lift, so it is full size at each contact
+       and pulls down toward the surface as the die climbs - distance said
+       twice, once by the mirror and once by the scale. The floor crossings
+       gate its opacity, which also keeps the parked die's mirror image (which
+       the flip would otherwise place above the floor) from showing while
+       nothing is on stage. */
+    const riseCross = HOLD + (apexAt - HOLD) * (1 - Math.sqrt(1 - p.below / (p.below + p.apex)));
+    const fallCross = peak2 + (gone - peak2) * Math.sqrt(p.b2 / (p.b2 + p.below));
+    /* The two axes shrink at different rates: a shadow keeps most of its
+       footprint as its caster rises but flattens toward the ground plane, so
+       width falls a little and height falls a lot. Shrinking both equally
+       kept it a miniature of the die; this keeps it a patch of ground. */
+    /* `width` narrows the whole reflection; the die itself is untouched. */
+    const kx = h => ((sh.width || 1) * (1 - (1 - sh.shrinkX) * h / p.apex)).toFixed(3);
+    const ky = h => (sh.scale * (1 - (1 - sh.shrinkY) * h / p.apex)).toFixed(4);
+    const T = h => `scale(${kx(h)}, -${ky(h)})`;
+    /* Opacity thins with height the same way the size does: the further the
+       die is from the ground, the less presence its shadow has. */
+    const oAt = h => +(sh.opacity - (sh.opacity - (sh.far === undefined ? sh.opacity : sh.far)) * h / p.apex).toFixed(3);
+    const K = (at, h, ease, op) => `  ${at.toFixed(1)}% { transform: ${T(h)}; opacity: ${op === undefined ? oAt(h) : op}`
+      + (ease ? `; animation-timing-function: ${ease}` : "") + ` }`;
+    return `${S}.scene[data-scene="${id}"] .scene-shade {
+    position: absolute; left: 0; right: 0; top: -80%;
     height: ${(p.floor * 100 + 80).toFixed(1)}%;
     overflow: hidden; pointer-events: none;
+    transform-origin: 50% 100%;
+    transform: ${T(0)}; opacity: 0;
+    filter: brightness(0) invert(${sh.grey});
+    animation: scShade${suffix} ${p.ms}ms infinite both;
+    will-change: transform, opacity;
   }
-${S}.scene[data-scene="${id}"] .scene-die {
-    position: absolute; left: 50%; bottom: 0;
+
+@keyframes scShade${suffix} {
+  0%, ${(riseCross - 1.5).toFixed(1)}% { transform: ${T(0)}; opacity: 0 }
+${K(riseCross, 0, RISE)}
+${K(apexAt, p.apex, FALL)}
+${K(land1, 0, RISE)}
+${K(peak1, p.b1, FALL)}
+${K(land2, 0, RISE)}
+${K(peak2, p.b2, FALL)}
+${K(Math.min(fallCross + 4.5, gone - 0.5), 0, null, 0)}
+  100% { transform: ${T(0)}; opacity: 0 }
+}
+`;
+  })()}${S}.scene[data-scene="${id}"] .scene-die {
+    /* The file draws the die with padding, so its ink stops short of its own
+       box - measured 12.8% short at the resting frame for the full die. Sunk
+       by that, the artwork meets the floor rather than hovering a die-margin
+       above whatever marks it: the shadow here, the disc on the portals. */
+    position: absolute; left: 50%;
+    bottom: ${(-((p.sink || 0) * p.die - over) / clipH * 100).toFixed(2)}%;
     width: ${(p.die * 100).toFixed(1)}%; aspect-ratio: 1;
     margin-left: ${(-p.die * 50).toFixed(1)}%;
     animation: scLift${suffix} ${p.ms}ms infinite both;

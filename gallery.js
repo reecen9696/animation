@@ -289,15 +289,17 @@ ${sections}
      paused again when it leaves, and a button's is not built until the button
      first shows one. The CSS-driven looks are unaffected either way - the
      compositor was never the bottleneck. */
+  /* A card's stage can hold the mark more than once - a reflection is the
+     same die again - so every mount in it is booted, not just the first. */
   function show(cell, on) {
-    var el = cell.querySelector(".stage .lottie");
-    if (!el) return;
-    if (on) {
-      var a = player(el);
-      if (STILL[el.getAttribute("data-anim")] === undefined) a.play();
-    } else if (el._anim) {
-      el._anim.pause();
-    }
+    Array.prototype.forEach.call(cell.querySelectorAll(".stage .lottie"), function (el) {
+      if (on) {
+        var a = player(el);
+        if (STILL[el.getAttribute("data-anim")] === undefined) a.play();
+      } else if (el._anim) {
+        el._anim.pause();
+      }
+    });
   }
   var near = function (cell) {
     var r = cell.getBoundingClientRect();

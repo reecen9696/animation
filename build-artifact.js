@@ -180,23 +180,29 @@ ${meta}
 
   /* One player, reloaded on each switch: the JSON is already in memory, so
      rebuilding is cheap and it guarantees the look starts on frame one. */
-  var mount = document.getElementById("stage-lottie"), player;
+  var mount = document.getElementById("stage-lottie"), players = [];
   function showCustom(id) {
-    if (player) { player.destroy(); player = null; }
+    players.forEach(function (a) { a.destroy(); });
+    players = [];
     if (!CUSTOM[id]) { document.body.removeAttribute("data-custom"); return; }
     document.body.setAttribute("data-custom", id);
     mount.setAttribute("data-anim", id);
     var still = STILL[id];
-    /* A scene supplies its own markup; the player then goes in the mount it
-       names rather than straight into the stage. */
+    /* A scene supplies its own markup, and may name the mark more than once -
+       a reflection is the same die again - so every mount it names gets its
+       own player rather than only the first. */
     mount.innerHTML = SCENE[id] || "";
-    var host = SCENE[id] ? mount.querySelector(".lottie") : mount;
-    player = lottie.loadAnimation({
-      container: host, renderer: "svg",
-      loop: still === undefined, autoplay: still === undefined,
-      animationData: CUSTOM[id]
+    var hosts = SCENE[id] ? mount.querySelectorAll(".lottie") : [mount];
+    Array.prototype.forEach.call(hosts, function (el) {
+      var a = lottie.loadAnimation({
+        container: el, renderer: "svg",
+        loop: still === undefined, autoplay: still === undefined,
+        animationData: JSON.parse(JSON.stringify(CUSTOM[id]))
+      });
+      if (still !== undefined) a.goToAndStop(still, true);
+      el._anim = a;
+      players.push(a);
     });
-    if (still !== undefined) player.goToAndStop(still, true);
   }
 
   function select(id) {

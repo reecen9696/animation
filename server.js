@@ -329,14 +329,20 @@ function customLoadingPage({ id, debug }) {
 <script src="/public/lottie.min.js"></script>
 <script>
   var still = ${JSON.stringify(custom.stills()[id] === undefined ? null : custom.stills()[id])};
-  var player = lottie.loadAnimation({
-    container: document.querySelector("#stage-box .lottie"), renderer: "svg",
-    loop: still === null, autoplay: still === null,
-    animationData: ${JSON.stringify(custom.data(id))}
+  var DATA = ${JSON.stringify(custom.data(id))};
+  /* A scene can hold the mark more than once - a reflection is the same die
+     again - so every mount gets its own player rather than only the first. */
+  var player = null;
+  Array.prototype.forEach.call(document.querySelectorAll("#stage-box .lottie"), function (el) {
+    var a = lottie.loadAnimation({
+      container: el, renderer: "svg",
+      loop: still === null, autoplay: still === null,
+      animationData: JSON.parse(JSON.stringify(DATA))
+    });
+    if (still !== null) a.goToAndStop(still, true);
+    el._anim = a;
+    if (!player) player = a;
   });
-  if (still !== null) player.goToAndStop(still, true);
-  var stageMount = document.querySelector("#stage-box .lottie");
-  if (stageMount) stageMount._anim = player;
 ${custom.driverJs('document.querySelectorAll("#stage-box .lottie[data-anim]")')}
 
   var hint = document.getElementById("hint");
