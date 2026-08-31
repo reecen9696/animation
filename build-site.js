@@ -150,6 +150,10 @@ const html = `<!doctype html>
       <h3>Workbench &rarr;</h3>
       <p>Tune every parameter live, retime dots by hand, save looks, and copy drop-in CSS.</p>
     </a>
+    <a class="tool" href="dice-lab.html">
+      <h3>Dice lab &rarr;</h3>
+      <p>Every frame of the die at once, with a switch per dot per frame, to decide what shows when.</p>
+    </a>
   </div>
 ${groups}
 ${customSection}

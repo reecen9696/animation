@@ -46,8 +46,10 @@ see them in context.
   rolls away and shrinks away as it slows. Outward leg only.
 - **Custom** — looks authored outside this repo and shipped as Lottie JSON,
   played rather than generated. `dice` is a die tumbling end over end, `pips`
-  is the same file with the body taken out so only the dots remain, and
-  `ghost` is a longer, softer tumble drawn at 21%.
+  is the same file with the body taken out so only the dots remain, `solid`
+  is the die with its crowding faded away so it stops reading as see-through,
+  `jump` keeps only frame 0 - the flat mark - and throws it in the air with a
+  whole turn on it, and `ghost` is a longer, softer tumble drawn at 21%.
 
 ## Run
 
@@ -157,7 +159,8 @@ They survive a reload and stay in that browser only.
 | File | Purpose |
 | --- | --- |
 | `anim.js` | The animation maths — curve, per-dot offsets, keyframe generation |
-| `custom.js` | Registry for the Lottie looks — which file, what to recolour, what to drop |
+| `custom.js` | Registry for the Lottie looks — which file, what to recolour, drop, fade or throw |
+| `build-dice-lab.js` | Builds `dice-lab.html`, the bench for deciding which dots show when |
 | `custom/*.json` | The Lottie files as they were delivered, never edited in place |
 | `public/lottie.min.js` | Vendored lottie-web 5.12.2 (light build) that plays them |
 | `server.js` | Dev server and the `/test/:id` route |
@@ -190,6 +193,37 @@ backgrounds. `Scatter loading v5` is white throughout and vanishes on a light
 page; it is shipped untouched. `Scatter loading (black dice) v6.1` is a black
 die with white pips, so on this black stage the body disappears — `dice` turns
 it round (white body, black pips) and `pips` drops the body outright.
+
+### Why the die looked see-through, and what fixed it
+
+`Scatter loading (black dice) v6.1` carries **eight** dot layers for a
+seven-dot mark, and draws all eight at every frame. At rest two of them sit on
+the same spot — measured 1px apart at frame 0 — so you count seven. Through the
+roll they drift apart and you count eight, and the spare reads as a dot showing
+through from the far side.
+
+Nothing in the file can be consulted about it. Every null sits at `z = 0` and
+the body is four hand-drawn outlines rather than faces, so it holds no depth and
+no faces. There is no back side to hide.
+
+Removing one layer outright does not work either: which pair is crowding
+changes frame to frame (`01/08` at f0, `03/07` at f8, `02/05` at f12), so any
+single always-hidden layer leaves a hole somewhere.
+
+So `solid` measures it. Every dot was tracked across all 32 frames, and a dot's
+opacity falls as a higher-priority dot closes on it — full at 1.15 combined
+radii apart, gone by 0.55, smoothstepped between, with priority fixed to layer
+order so the choice can never flicker. Because it is a distance rather than a
+switch, the dots fade rather than blink. The result is a clean seven all the
+way round. The table lives in `DECLUTTER` in `custom.js`; re-derive or
+hand-adjust it in **`dice-lab.html`**, which puts all 32 frames on screen with
+a switch per dot per frame.
+
+`jump` throws the roll away entirely. `freeze: 0` cuts the animation to one
+frame, so lottie draws the flat mark and never moves off it; the motion is then
+CSS on the mount — up on a parabola, one whole turn at a constant rate while
+airborne, down, landing flat on the orientation it left on. It stays a solid
+object: it moves and it turns, and nothing about it deforms.
 
 To add one: drop the `.json` in `custom/` and add an entry to `CUSTOM` in
 `custom.js`. It shows up in the gallery, the index and the loading screen's

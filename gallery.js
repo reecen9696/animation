@@ -45,7 +45,12 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   const rows = GALLERY.map(group => ({
     mode: group.mode,
     cells: group.ids.map(id => {
-      if (custom.has(id)) return { id, lottie: custom.meta(id) };
+      if (custom.has(id)) {
+        /* a look that hops carries a CSS arc over the top of its own roll */
+        const hop = custom.jumpCss(id, `#c-${id}`, "_" + id);
+        if (hop) css.push(hop);
+        return { id, lottie: custom.meta(id) };
+      }
       const c = anim.resolveConfig(id, {});
       const sfx = "_" + id.replace(/[^a-z0-9]/gi, "");
       css.push(anim.animCss(c, ".mark", ".mark .dot", sfx, `#c-${id}`));
@@ -83,7 +88,8 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
       <article class="cell" id="c-${id}">
         <h3 class="name">${esc(id)}</h3>
         <div class="stage">
-          <div class="lottie stage-lottie" data-anim="${esc(id)}"
+          <div class="lottie stage-lottie" data-anim="${esc(id)}"${
+            custom.mountScale(id) < 1 ? " data-hop" : ""}
                title="${esc(lottie.source)}"></div>
         </div>
         ${uiButtons(null, id)}
@@ -198,6 +204,8 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   /* A lottie draws itself inside a box rather than to the edge of one, so its
      mount is set larger than the mark to land on the same optical size. */
   .lottie{display:block;width:150px;height:150px}
+  /* a hopping look is drawn smaller so the card has headroom for the arc */
+  .stage-lottie[data-hop]{width:112px;height:112px}
   .ui-btn .lottie{width:38px;height:38px}
   .ui-btn .lottie svg{display:block}
   /* Bet swaps its label out; autobet keeps it and runs the mark to its left. */
