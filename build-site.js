@@ -111,13 +111,13 @@ const html = `<!doctype html>
 <div class="wrap">
   <div class="eyebrow">Motion study &middot; navbar mark</div>
   <h1>Scatter mark</h1>
-  <p class="lede">Six ways to animate the seven-dot mark, each shown on the app behind a
-     50% black scrim at the size it ships at. Every variant below is a direct link.</p>
+  <p class="lede">${GROUPS.length} ways to animate the seven-dot mark, each shown on black at the
+     size it ships at, with nothing behind it. Every variant below is a direct link.</p>
 
   <div class="tools">
     <a class="tool" href="loading-screen.html">
       <h3>Loading screen &rarr;</h3>
-      <p>All ${GROUPS.reduce((n, g) => n + Object.keys(g.set).length, 0)} variants in context, with a switcher. Press 1&ndash;9 to compare.</p>
+      <p>All ${GROUPS.reduce((n, g) => n + Object.keys(g.set).length, 0)} variants on black, with a switcher. Press 1&ndash;9 to compare.</p>
     </a>
     <a class="tool" href="gallery.html">
       <h3>Shortlist &rarr;</h3>

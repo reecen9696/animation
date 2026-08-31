@@ -134,18 +134,8 @@ function loadingPage({ id, presetId, config, debug }) {
     overflow: hidden;
   }
 
-  /* The app screenshot standing in for the real page underneath. */
-  .backdrop {
-    position: fixed; inset: 0;
-    background: #000 url("/public/background.jpg") center top / cover no-repeat;
-  }
-
-  /* 50% black scrim between the app and the loader. */
-  .scrim {
-    position: fixed; inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-  }
-
+  /* Nothing behind the mark but black: the body's own background is the whole
+     stage, so the motion is judged on its own rather than against the app. */
   .loader {
     position: fixed; inset: 0;
     display: grid; place-items: center;
@@ -192,8 +182,6 @@ function loadingPage({ id, presetId, config, debug }) {
 </style>
 </head>
 <body>
-  <div class="backdrop"></div>
-  <div class="scrim"></div>
   <div class="loader">
     ${anim.markSvg(config, "scatter-mark")}
   </div>
@@ -324,7 +312,7 @@ function indexPage() {
 <body>
 <div class="wrap">
   <h1>Scatter loading screen</h1>
-  <p class="lede">The app screenshot behind a 50% black scrim, with the pulse wave centred on top.
+  <p class="lede">The mark centred on black at the size it ships at, with nothing behind it.
      Each variant is a route &mdash; open one and press a number key to flip between them
      without leaving the page.</p>
   <h3>Pulse wave</h3>

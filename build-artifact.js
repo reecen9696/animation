@@ -1,15 +1,13 @@
 /**
- * Builds loading-screen.html: the /test route as one self-contained file,
- * with the background inlined as a data URI so it can be published as an
- * Artifact (no external requests are allowed there).
+ * Builds loading-screen.html: the /test route as one self-contained file.
+ * The mark runs on black with nothing behind it, so the page is pure markup,
+ * CSS and script and makes no external requests at all — which is what an
+ * Artifact needs, and what the switcher below stays fast on.
  *
  *   node build-artifact.js
  */
 const fs = require("fs");
 const anim = require("./anim.js");
-
-const BG = process.argv[2] || "public/background-small.jpg";
-const dataUri = "data:image/jpeg;base64," + fs.readFileSync(BG).toString("base64");
 
 const ALL = { ...anim.PRESETS, ...anim.WAVE_PRESETS, ...anim.BUMP_PRESETS, ...anim.ORBIT_PRESETS,
               ...anim.CUBE_PRESETS, ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS,
@@ -56,14 +54,6 @@ const html = `<title>Scatter Loading Screen</title>
     margin: 0; background: #000; overflow: hidden;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-
-  /* The app screenshot standing in for the real page underneath. */
-  .backdrop {
-    position: fixed; inset: 0;
-    background: #000 url("${dataUri}") center top / cover no-repeat;
-  }
-  /* 50% black scrim between the app and the loader. */
-  .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, .5) }
 
   .loader { position: fixed; inset: 0; display: grid; place-items: center; z-index: 2 }
   .scatter-mark {
@@ -114,8 +104,6 @@ ${blocks}
   }
 </style>
 
-<div class="backdrop"></div>
-<div class="scrim"></div>
 <div class="loader">
   ${anim.markSvg({ ...anim.CUBE_PRESETS.tumble, trail: 4 }, "scatter-mark")}
 </div>

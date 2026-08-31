@@ -59,7 +59,7 @@ No dependencies — Node's stdlib only.
 | Route | What it is |
 | --- | --- |
 | `/` | Index of the variants |
-| `/test/:id` | Loading screen: app screenshot, 50% black scrim, mark centred on top |
+| `/test/:id` | Loading screen: the mark centred on black at ship size, nothing behind it |
 | `/test` | Same, default preset |
 | `/gallery` | Every look side by side, one titled row per family, five across, each with a way through to `/test` |
 | `/workbench` | The tuning workbench |
@@ -156,8 +156,8 @@ They survive a reload and stay in that browser only.
 | `server.js` | Dev server and the `/test/:id` route |
 | `build-artifact.js` | Bundles the loading screen into one self-contained HTML file |
 | `scatter-pulse.html` | Tuning workbench (timeline editing, CSV export) |
-| `loading-screen.html` | Built output — background inlined, no external requests |
-| `public/background.jpg` | App screenshot used as the backdrop |
+| `loading-screen.html` | Built output — one self-contained file, no external requests |
+| `public/background.jpg` | App screenshot; used by the workbench preview, not by `/test` |
 | `scatter-pulse-times.csv` | Per-dot delays at the default settings |
 | `scatter-pulse-keyframes.csv` | Sampled scale curve |
 | `scatter-pulse.json` | Full config plus per-dot timings |

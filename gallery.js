@@ -2,7 +2,7 @@
  * The contact sheet: every look, side by side, five across.
  *
  * Shared by the dev server (/gallery) and the static build (gallery.html) so the
- * two cannot drift. The only difference between them is where "Test on UI"
+ * two cannot drift. The only difference between them is where "Open full size"
  * points, which the caller supplies.
  */
 const anim = require("./anim.js");
@@ -68,14 +68,14 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
           </div>
         </div>
         ${meta}
-        <a class="btn" href="${esc(testHref(id))}">Test on UI</a>
+        <a class="btn" href="${esc(testHref(id))}">Open full size</a>
       </article>`;
     }
     return `
       <article class="cell" id="c-${id}">
         <div class="stage">${anim.markSvg(config, "mark")}</div>
         ${meta}
-        <a class="btn" href="${esc(testHref(id))}">Test on UI</a>
+        <a class="btn" href="${esc(testHref(id))}">Open full size</a>
       </article>`;
   };
 
