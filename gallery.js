@@ -34,8 +34,11 @@ const GALLERY = [
   { mode: "Dash", ids: ["dash"], wide: true },
   { mode: "Track", ids: ["track"], wide: true },
   /* Authored elsewhere and shipped as Lottie rather than generated here, so
-     this row is whatever is sitting in custom/ - see custom.js. */
-  { mode: "Custom", ids: custom.ids() }
+     these rows are whatever is sitting in custom/ - see custom.js. The ones
+     that build a scene around the mark, rather than only moving it, get a row
+     of their own. */
+  { mode: "Custom", ids: custom.ids().filter(id => !custom.isScene(id)) },
+  { mode: "Bounce", ids: custom.ids().filter(custom.isScene) }
 ];
 
 function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
@@ -81,6 +84,12 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
         </div>`;
   };
 
+  /* A button is a place the mark has to sit inside, so it only makes sense
+     for a look that stays put. A scene brings its own floor and its own space,
+     and dash and track walk clean out of anything that would hold them - so
+     those cards show the look alone. */
+  const inAButton = id => !custom.isScene(id);
+
   const card = ({ id, config, lottie }) => {
     if (lottie) {
       /* Nothing to scope keyframes to: lottie draws it, so the card is a
@@ -90,10 +99,9 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
         <h3 class="name">${esc(id)}</h3>
         <div class="stage" title="${esc(lottie.source)}">
           ${custom.markup(id, "stage-scene")
-            || `<div class="lottie stage-lottie" data-anim="${esc(id)}"${
-                 custom.mountScale(id) < 1 ? " data-hop" : ""}></div>`}
+            || `<div class="lottie stage-lottie" data-anim="${esc(id)}"></div>`}
         </div>
-        ${uiButtons(null, id)}
+        ${inAButton(id) ? uiButtons(null, id) : ""}
         <a class="btn" href="${esc(testHref(id))}">Test loading</a>
       </article>`;
     }
@@ -116,7 +124,6 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
             ${anim.markSvg(config, "mark")}
           </div>
         </div>
-        ${uiButtons(config)}
         <a class="btn" href="${esc(testHref(id))}">Test loading</a>
       </article>`;
     }
@@ -205,8 +212,6 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   /* A lottie draws itself inside a box rather than to the edge of one, so its
      mount is set larger than the mark to land on the same optical size. */
   .lottie{display:block;width:150px;height:150px}
-  /* a hopping look is drawn smaller so the card has headroom for the arc */
-  .stage-lottie[data-hop]{width:112px;height:112px}
   /* a scene is a box the look arranges itself inside */
   /* Bottom-aligned and a touch smaller than the stage: a scene throws its die
      above its own box, and the card would otherwise clip the top of the arc. */

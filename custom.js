@@ -94,32 +94,6 @@ const CUSTOM = {
     recolor: { "#F3F3F3": "#FFFFFF" },
     hide: ["Sq"]
   },
-  /* The die with the crowding taken out: same roll, but a dot dims away as
-     another closes on it and comes back as they part, so the face stays a
-     clean seven all the way round instead of briefly showing eight. */
-  solid: {
-    file: "dice.json",
-    source: "Scatter loading (black dice) v6.1 - 1 sec",
-    note: "The die turned round for a black page, with each dot fading out as "
-        + "another crowds it, so it never reads as see-through.",
-    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
-    dots: DECLUTTER
-  },
-  /* The die's own roll is thrown away here - only frame 0 is kept, which is
-     the flat mark. That still is then jumped and turned a whole revolution in
-     the air, landing flat on the orientation it left on. It stays a solid
-     object throughout: it moves and it turns, and nothing about it deforms. */
-  jump: {
-    file: "dice.json",
-    source: "Scatter loading (black dice) v6.1 - 1 sec, frame 0",
-    note: "The flat die, held still, thrown up and turned once round before "
-        + "it lands back flat. No roll and no squash - it is a solid object.",
-    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
-    dots: DECLUTTER,
-    round: 74,
-    freeze: 0,
-    jump: { ms: 1400, lift: 42, turn: 360, up: 0.12, down: 0.88, mount: 0.72 }
-  },
   /* A scene rather than a single moving mark. The disc on the floor is the
      way in and out: it opens, the die rises through it, it shuts behind it,
      the die drops and bounces twice, the disc opens again under it on the
@@ -193,6 +167,22 @@ const CUSTOM = {
               apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
               turnFromApex: true, impactRoll: true, rollFrac: [0.77, 0.60] }
   },
+  /* `chutepips` with the die whole rather than only its dots. Same drawing as
+     `dice` - body turned white, pips turned black, and nothing else touched,
+     including the corner radius the file animates as it rolls - and the same
+     handling: held still in the air, rolled off each contact. */
+  chutedice: {
+    file: "dice.json",
+    source: "Scatter loading (black dice) v6.1 - 1 sec",
+    note: "The whole die dropping through the floor, still in the air and "
+        + "rolling only where it hits.",
+    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
+    round: 100,
+    freeze: 0,
+    portal: { ms: 4600, floor: 0.86, die: 0.60, disc: 0, thin: 17,
+              apex: 0.60, b1: 0.54, b2: 0.47, below: 0.70, turn: 270,
+              turnEven: true, impactRoll: true, rollFrac: [0.77, 0.60] }
+  },
   ghost: {
     file: "ghost.json",
     source: "Scatter loading v5",
@@ -205,6 +195,8 @@ const CUSTOM = {
 
 const ids = () => Object.keys(CUSTOM);
 const has = id => Object.prototype.hasOwnProperty.call(CUSTOM, id);
+/** A look that builds a scene around the mark rather than just moving it. */
+const isScene = id => !!(CUSTOM[id] && CUSTOM[id].portal);
 
 /** The file as authored, parsed. */
 function raw(id) {
@@ -329,45 +321,17 @@ const meta = id => ({
 const bundle = () => Object.fromEntries(ids().map(id => [id, data(id)]));
 
 /**
- * The jump, as CSS on the mount.
+ * The portal scene, as CSS.
  *
- * Height and turn want different easing - the throw slows into the top and
- * gathers on the way down, while the turn runs at one rate throughout - and a
- * single transform cannot ease its parts separately. So the height rides on
- * the mount and the turn on the SVG inside it, which is two elements and two
- * timing functions. Three keyframes each, eased, rather than a sampled
- * polyline: the curve is then the browser's to draw and is properly smooth.
+ * Three things run on the same clock: the die's height, its turn, and the
+ * disc's opening. They are separate elements so each can carry its own easing
+ * - the die falls on a gravity curve, the disc opens on a soft one, the turn
+ * is even throughout. The clip is what sells it: its bottom edge is the floor
+ * line, so a die pushed below that is not drawn at all, and the disc sits over
+ * the seam so nothing can be caught crossing it.
  *
- * It sits still on the ground either side of the throw, which gives the loop a
- * beat instead of making it a continuous churn.
+ * Heights are percentages of the die's own box, so the scene scales whole.
  */
-function jumpCss(id, scope, suffix = "") {
-  const j = CUSTOM[id] && CUSTOM[id].jump;
-  if (!j) return null;
-  const S = scope ? scope + " " : "";
-  const pc = t => (t * 100).toFixed(2) + "%";
-  /* leaving the ground fast and arriving slow, then the mirror of it */
-  const UP = "cubic-bezier(.12,.62,.30,1)";
-  const DOWN = "cubic-bezier(.70,0,.88,.38)";
-
-  return `${S}.lottie[data-anim="${id}"] {
-    animation: customLift${suffix} ${j.ms}ms infinite both;
-    will-change: transform;
-  }
-${S}.lottie[data-anim="${id}"] svg {
-    animation: customTurn${suffix} ${j.ms}ms linear infinite both;
-    will-change: transform;
-  }
-@keyframes customLift${suffix} {
-  0%, ${pc(j.up)} { transform: translateY(0); animation-timing-function: ${UP} }
-  ${pc((j.up + j.down) / 2)} { transform: translateY(-${j.lift}%); animation-timing-function: ${DOWN} }
-  ${pc(j.down)}, 100% { transform: translateY(0) }
-}
-@keyframes customTurn${suffix} {
-  0%, ${pc(j.up)} { transform: rotate(0deg) }
-  ${pc(j.down)}, 100% { transform: rotate(${j.turn}deg) }
-}`;
-}
 
 /**
  * The scene a look needs around it, or null for one that is just a mark. The
@@ -391,18 +355,6 @@ const stills = () => Object.fromEntries(ids()
   .filter(id => CUSTOM[id].freeze !== undefined)
   .map(id => [id, CUSTOM[id].freeze]));
 
-/**
- * The portal scene, as CSS.
- *
- * Three things run on the same clock: the die's height, its turn, and the
- * disc's opening. They are separate elements so each can carry its own easing
- * - the die falls on a gravity curve, the disc opens on a soft one, the turn
- * is even throughout. The clip is what sells it: its bottom edge is the floor
- * line, so a die pushed below that is not drawn at all, and the disc sits over
- * the seam so nothing can be caught crossing it.
- *
- * Heights are percentages of the die's own box, so the scene scales whole.
- */
 /**
  * When the die is where, as percentages of the cycle.
  *
@@ -486,7 +438,14 @@ ${S}.scene[data-scene="${id}"] .scene-die svg {
   }
 
 @keyframes scTurn${suffix} {
-${p.turnFromApex
+${p.turnEven
+  /* One rate, start to finish. Stepping the turn down at each contact is right
+     for a die being knocked about, but spread over a whole cycle the last
+     stretch ends up at a third the speed of the first and reads as the thing
+     sticking rather than slowing. Two keyframes and a linear ease hold it to
+     one speed the whole way. */
+  ? `  0%, ${pc(HOLD)}   { transform: rotate(0deg) }`
+  : p.turnFromApex
   /* Thrown straight: nothing turns on the way up, and the angle only starts to
      come off it once gravity has taken over at the top. */
   ? `  0%, ${pc(apexAt)}  { transform: rotate(0deg) }
@@ -528,11 +487,7 @@ ${disc}${turn}
 }
 
 /** Whichever motion a look carries, as CSS. */
-const motionCss = (id, scope, suffix) =>
-  jumpCss(id, scope, suffix) || portalCss(id, scope, suffix);
-
-/** How big to draw the mount: a look that jumps needs headroom above it. */
-const mountScale = id => (CUSTOM[id] && CUSTOM[id].jump && CUSTOM[id].jump.mount) || 1;
+const motionCss = (id, scope, suffix) => portalCss(id, scope, suffix);
 
 /**
  * `{ id: { ms, windows: [[from, to], ...] } }` in cycle percentages, for looks
@@ -608,6 +563,6 @@ function driverJs(mountsExpr) {
   })();`;
 }
 
-module.exports = { CUSTOM, ids, has, raw, data, cycleOf, meta, bundle,
-                   jumpCss, portalCss, portalMarks, motionCss, markup,
-                   mountScale, stills, rollSpec, driverJs, DIR };
+module.exports = { CUSTOM, ids, has, isScene, raw, data, cycleOf, meta, bundle,
+                   portalCss, portalMarks, motionCss, markup,
+                   stills, rollSpec, driverJs, DIR };

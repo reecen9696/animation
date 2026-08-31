@@ -73,9 +73,7 @@ const html = `<title>Scatter Loading Screen</title>
   .stage-lottie { display: none; width: clamp(180px, 21vw, 320px); aspect-ratio: 1 }
   .stage-lottie .scene { position: relative; width: 100%; height: 100% }
 ${CUSTOM_IDS.map(id => custom.motionCss(id, "body", "_" + id)).filter(Boolean).join("\n")}
-  /* a look that hops is drawn smaller so its arc has somewhere to go */
-${CUSTOM_IDS.filter(id => custom.mountScale(id) < 1).map(id =>
-  `  body[data-custom="${id}"] .stage-lottie { width: clamp(132px, 15vw, 236px) }`).join("\n")}
+
   body[data-custom] .scatter-mark, body[data-custom] .scatter-mark-rig { display: none }
   body[data-custom] .stage-lottie { display: block }
   .scatter-mark {

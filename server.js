@@ -279,7 +279,6 @@ function customLoadingPage({ id, debug }) {
   .loader { position: fixed; inset: 0; display: grid; place-items: center; z-index: 2 }
   .stage-lottie { width: clamp(180px, 21vw, 320px); aspect-ratio: 1; position: relative }
   .stage-lottie .scene, .stage-lottie .lottie { position: relative; width: 100%; height: 100% }
-  ${custom.mountScale(id) < 1 ? ".stage-lottie { width: clamp(132px, 15vw, 236px) }" : ""}
   ${custom.motionCss(id, "", "_" + id) || ""}
   .back {
     position: fixed; top: 18px; left: 18px; z-index: 4;

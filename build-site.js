@@ -24,11 +24,16 @@ const GROUPS = [
 /* Custom looks are authored elsewhere and arrive as Lottie, so they have no
    config to summarise - their card carries the source file and the length
    read off it instead. */
-const CUSTOM_GROUP = {
-  name: "Custom",
-  blurb: "Animations authored outside this repo and shipped as Lottie JSON, "
-       + "played rather than generated. Drop a file in custom/ to add one."
-};
+const CUSTOM_GROUPS = [
+  { name: "Custom",
+    blurb: "Animations authored outside this repo and shipped as Lottie JSON, "
+         + "played rather than generated. Drop a file in custom/ to add one.",
+    ids: custom.ids().filter(id => !custom.isScene(id)) },
+  { name: "Bounce",
+    blurb: "The same files given a floor to land on: thrown up, bounced, and "
+         + "dropped back out - some through a hole that opens for them.",
+    ids: custom.ids().filter(custom.isScene) }
+];
 
 const summarise = c => {
   const cycle = anim.cycleOf(c);
@@ -41,18 +46,18 @@ const summarise = c => {
   return `${cycle}ms &middot; ${c.pulse}ms pulse`;
 };
 
-const customSection = `
+const customSection = CUSTOM_GROUPS.map(g => `
     <section class="group">
-      <h2>${CUSTOM_GROUP.name}</h2>
-      <p class="blurb">${CUSTOM_GROUP.blurb}</p>
+      <h2>${g.name}</h2>
+      <p class="blurb">${g.blurb}</p>
       <div class="chips">
-        ${custom.ids().map(id => {
+        ${g.ids.map(id => {
           const m = custom.meta(id);
           return `<a class="chip" href="loading-screen.html#${id}"><b>${id}</b>`
                + `<span>${m.cycle}ms &middot; lottie</span></a>`;
         }).join("\n        ")}
       </div>
-    </section>`;
+    </section>`).join("\n");
 
 const groups = GROUPS.map(g => `
     <section class="group">
@@ -134,7 +139,7 @@ const html = `<!doctype html>
 <div class="wrap">
   <div class="eyebrow">Motion study &middot; navbar mark</div>
   <h1>Scatter mark</h1>
-  <p class="lede">${GROUPS.length + 1} ways to animate the seven-dot mark, each shown on black at the
+  <p class="lede">${GROUPS.length + CUSTOM_GROUPS.length} ways to animate the seven-dot mark, each shown on black at the
      size it ships at, with nothing behind it. Every variant below is a direct link.</p>
 
   <div class="tools">
