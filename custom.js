@@ -136,8 +136,45 @@ const CUSTOM = {
     freeze: 0,
     /* Heights are fractions of the scene box, not of the die - so the die can
        be resized without the throw changing shape or climbing out of frame. */
-    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0.62,
-              apex: 0.32, b1: 0.28, b2: 0.24, below: 0.70, turn: 720 }
+    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
+              apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 720 }
+  },
+  /* The same throw with no way in or out: the floor is just a line the die
+     drops past. Everything below it is clipped, so it leaves without a seam
+     rather than sinking through anything. */
+  chute: {
+    file: "dice.json",
+    source: "Scatter loading (black dice) v6.1 - 1 sec, frame 0",
+    note: "The die bouncing and dropping straight through the floor, with no "
+        + "disc opening for it.",
+    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
+    dots: DECLUTTER, round: 74, freeze: 0,
+    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0, thin: 17,
+              apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 720 }
+  },
+  /* Pips through the portal, and the file's own roll rather than a still spun
+     by CSS - slowed so one roll spans most of the flight instead of three
+     spinning past. `turn: 0` keeps CSS off the rotation entirely. */
+  portalpips: {
+    file: "dice.json",
+    source: "Scatter loading (black dice) v6.1 - 1 sec",
+    note: "The portal throw with only the dots, tumbling on the file's own "
+        + "roll slowed to the pace of the bounce.",
+    recolor: { "#F3F3F3": "#FFFFFF" },
+    hide: ["Sq"], dots: DECLUTTER, rollMs: 2600,
+    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
+              apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 0 }
+  },
+  /* The same again with the die whole, so the body rolls with the dots. */
+  portalroll: {
+    file: "dice.json",
+    source: "Scatter loading (black dice) v6.1 - 1 sec",
+    note: "The portal throw with the whole die rolling on its own animation, "
+        + "slowed to the pace of the bounce.",
+    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
+    dots: DECLUTTER, round: 74, rollMs: 2600,
+    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0.62, thin: 17,
+              apex: 0.42, b1: 0.37, b2: 0.32, below: 0.70, turn: 0 }
   },
   ghost: {
     file: "ghost.json",
@@ -232,6 +269,16 @@ function applyRound(d, radius) {
   walk(d.layers || []);
 }
 
+/**
+ * Retime the file so one loop takes `ms`. Frame rate is the only thing that
+ * moves - every keyframe keeps its frame number, so the roll is unchanged in
+ * shape and only slower on the clock.
+ */
+function applyRollMs(d, ms) {
+  const frames = (d.op || 0) - (d.ip || 0);
+  if (frames > 0 && ms > 0) d.fr = +(frames / (ms / 1000)).toFixed(4);
+}
+
 /** The animation as the site should draw it: ready to hand to lottie. */
 function data(id) {
   const d = raw(id);
@@ -239,6 +286,7 @@ function data(id) {
   if (CUSTOM[id].hide) applyHide(d, CUSTOM[id].hide);
   if (CUSTOM[id].dots) applyDots(d, CUSTOM[id].dots);
   if (CUSTOM[id].round !== undefined) applyRound(d, CUSTOM[id].round);
+  if (CUSTOM[id].rollMs) applyRollMs(d, CUSTOM[id].rollMs);
   return d;
 }
 
@@ -317,7 +365,7 @@ function markup(id, cls = "") {
        + `<span class="scene-clip">`
        +   `<span class="scene-die"><span class="lottie" data-anim="${id}"></span></span>`
        + `</span>`
-       + `<i class="scene-disc"></i>`
+       + (CUSTOM[id].portal.disc > 0 ? `<i class="scene-disc"></i>` : "")
        + `</div>`;
 }
 
@@ -354,10 +402,71 @@ function portalCss(id, scope, suffix = "") {
   const h = v => (-v / p.die * 100).toFixed(1);
   const below = (p.below / p.die * 100).toFixed(1);
 
+  /* Every mark is derived from the heights, never typed. Under one gravity a
+     segment's duration goes with the square root of the distance it covers,
+     so the six arcs share out the airborne time in that ratio - which is what
+     makes it read as one object losing a little energy per bounce rather than
+     as separate hops. Change a height and the timing follows on its own. */
+  const HOLD = 6, TAIL = 8.1;
+  const seg = [p.below + p.apex, p.apex, p.b1, p.b1, p.b2, p.b2 + p.below]
+    .map(Math.sqrt);
+  const span = (100 - HOLD - TAIL) / seg.reduce((a, b) => a + b, 0);
+  const m = [];
+  seg.reduce((t, u) => { const n = t + u * span; m.push(n); return n; }, HOLD);
+  const [apexAt, land1, peak1, land2, peak2, gone] = m;
+  const pc = v => v.toFixed(1) + "%";
+
+  /* The disc has to be open at each crossing and shut in between, so its cues
+     hang off the die's marks rather than off round numbers: open before the
+     rise, shut once the die is well clear, open again while the second bounce
+     is still up, shut once it has been swallowed. */
+  const shutFrom = HOLD + (apexAt - HOLD) * 0.48;
+  const shutBy   = HOLD + (apexAt - HOLD) * 0.74;
+  const openFrom = peak2 + (gone - peak2) * 0.16;
+  const openBy   = peak2 + (gone - peak2) * 0.40;
+
+  const disc = p.disc > 0 ? `
+${S}.scene[data-scene="${id}"] .scene-disc {
+    position: absolute; left: 50%; top: ${(p.floor * 100).toFixed(1)}%;
+    width: ${(p.disc * 100).toFixed(1)}%; aspect-ratio: ${p.thin || 12} / 1;
+    margin-left: ${(-p.disc * 50).toFixed(1)}%;
+    background: #fff; border-radius: 50%;
+    transform: translateY(-50%) scale(0);
+    animation: scDisc${suffix} ${p.ms}ms infinite both;
+    will-change: transform;
+  }
+
+@keyframes scDisc${suffix} {
+  0%, 1%    { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
+  ${pc(HOLD)}       { transform: translateY(-50%) scale(1) }
+  ${pc(shutFrom)}   { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
+  ${pc(shutBy)}     { transform: translateY(-50%) scale(0) }
+  ${pc(openFrom)}   { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
+  ${pc(openBy)}     { transform: translateY(-50%) scale(1) }
+  ${pc(gone)}       { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
+  ${pc(Math.min(gone + 4, 99))}, 100% { transform: translateY(-50%) scale(0) }
+}` : "";
+
+  /* Spin is constant while airborne and only changes at a contact, so it is
+     linear within each flight and steps down at each impact. `turn: 0` hands
+     the tumble back to the file's own roll and takes CSS off it entirely. */
+  const turn = p.turn > 0 ? `
+${S}.scene[data-scene="${id}"] .scene-die svg {
+    animation: scTurn${suffix} ${p.ms}ms linear infinite both;
+    will-change: transform;
+  }
+
+@keyframes scTurn${suffix} {
+  0%, ${pc(HOLD)}   { transform: rotate(0deg) }
+  ${pc(land1)}      { transform: rotate(${(p.turn * 0.5).toFixed(0)}deg) }
+  ${pc(land2)}      { transform: rotate(${(p.turn * 0.75).toFixed(0)}deg) }
+  ${pc(gone)}, 100% { transform: rotate(${p.turn}deg) }
+}` : "";
+
   return `${S}.scene[data-scene="${id}"] { position: relative; overflow: visible }
 ${S}.scene[data-scene="${id}"] .scene-clip {
-    position: absolute; left: 0; right: 0; top: -60%;
-    height: ${(p.floor * 100 + 60).toFixed(1)}%;
+    position: absolute; left: 0; right: 0; top: -80%;
+    height: ${(p.floor * 100 + 80).toFixed(1)}%;
     overflow: hidden; pointer-events: none;
   }
 ${S}.scene[data-scene="${id}"] .scene-die {
@@ -368,60 +477,18 @@ ${S}.scene[data-scene="${id}"] .scene-die {
     will-change: transform;
   }
 ${S}.scene[data-scene="${id}"] .scene-die .lottie { width: 100%; height: 100% }
-${S}.scene[data-scene="${id}"] .scene-die svg {
-    display: block; width: 100%; height: 100%;
-    animation: scTurn${suffix} ${p.ms}ms linear infinite both;
-    will-change: transform;
-  }
-${S}.scene[data-scene="${id}"] .scene-disc {
-    position: absolute; left: 50%; top: ${(p.floor * 100).toFixed(1)}%;
-    width: ${(p.disc * 100).toFixed(1)}%; aspect-ratio: 17 / 1;
-    margin-left: ${(-p.disc * 50).toFixed(1)}%;
-    background: #fff; border-radius: 50%;
-    transform: translateY(-50%) scale(0);
-    animation: scDisc${suffix} ${p.ms}ms infinite both;
-    will-change: transform;
-  }
+${S}.scene[data-scene="${id}"] .scene-die svg { display: block; width: 100%; height: 100% }
+${disc}${turn}
 
-/* Height. 0 rests on the floor line; positive is under it and clipped away.
-   Every mark is derived, not styled: with one gravity, the time a segment
-   takes goes with the square root of the distance it covers, so the first
-   bounce hangs for 94% of the first fall's time and the second for 87% -
-   which is what makes it read as one ball losing a little energy rather than
-   three unrelated hops. The first and last arcs are the longest because they
-   carry on below the floor. */
+/* Height. 0 rests on the floor line; positive is under it and clipped away. */
 @keyframes scLift${suffix} {
-  0%, 6%     { transform: translateY(${below}%); animation-timing-function: ${RISE} }
-  27.2%      { transform: translateY(${h(p.apex)}%); animation-timing-function: ${FALL} }
-  39.1%      { transform: translateY(0); animation-timing-function: ${RISE} }
-  50.2%      { transform: translateY(${h(p.b1)}%); animation-timing-function: ${FALL} }
-  61.3%      { transform: translateY(0); animation-timing-function: ${RISE} }
-  71.6%      { transform: translateY(${h(p.b2)}%); animation-timing-function: ${FALL} }
-  91.9%, 100%{ transform: translateY(${below}%) }
-}
-
-/* Spin is constant while airborne and only changes at a contact, so it is
-   linear within each flight and steps down at each impact: half the turn on
-   the big arc, then less on each bounce. It completes two whole revolutions,
-   so the loop closes square and the next rise starts clean. */
-@keyframes scTurn${suffix} {
-  0%, 6%     { transform: rotate(0deg) }
-  39.1%      { transform: rotate(${(p.turn * 0.5).toFixed(0)}deg) }
-  61.3%      { transform: rotate(${(p.turn * 0.75).toFixed(0)}deg) }
-  91.9%, 100%{ transform: rotate(${p.turn}deg) }
-}
-
-/* Open just ahead of the die, shut once its trailing edge has cleared, open
-   again while the second bounce is still up, shut once it is swallowed. */
-@keyframes scDisc${suffix} {
-  0%, 1%    { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
-  6%        { transform: translateY(-50%) scale(1) }
-  15%       { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
-  21%       { transform: translateY(-50%) scale(0) }
-  76%       { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
-  81%       { transform: translateY(-50%) scale(1) }
-  91%       { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
-  96%, 100% { transform: translateY(-50%) scale(0) }
+  0%, ${pc(HOLD)}   { transform: translateY(${below}%); animation-timing-function: ${RISE} }
+  ${pc(apexAt)}     { transform: translateY(${h(p.apex)}%); animation-timing-function: ${FALL} }
+  ${pc(land1)}      { transform: translateY(0); animation-timing-function: ${RISE} }
+  ${pc(peak1)}      { transform: translateY(${h(p.b1)}%); animation-timing-function: ${FALL} }
+  ${pc(land2)}      { transform: translateY(0); animation-timing-function: ${RISE} }
+  ${pc(peak2)}      { transform: translateY(${h(p.b2)}%); animation-timing-function: ${FALL} }
+  ${pc(gone)}, 100% { transform: translateY(${below}%) }
 }`;
 }
 

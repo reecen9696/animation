@@ -208,7 +208,9 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   /* a hopping look is drawn smaller so the card has headroom for the arc */
   .stage-lottie[data-hop]{width:112px;height:112px}
   /* a scene is a box the look arranges itself inside */
-  .stage-scene{width:150px;height:150px;position:relative}
+  /* Bottom-aligned and a touch smaller than the stage: a scene throws its die
+     above its own box, and the card would otherwise clip the top of the arc. */
+  .stage-scene{width:128px;height:128px;position:relative;align-self:end;margin-bottom:8px}
   .ui-btn .scene{width:40px;height:40px;position:relative;flex:none}
   .ui-btn .lottie{width:38px;height:38px}
   .ui-btn .lottie svg{display:block}
