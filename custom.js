@@ -342,8 +342,12 @@ function portalCss(id, scope, suffix = "") {
   const p = CUSTOM[id] && CUSTOM[id].portal;
   if (!p) return null;
   const S = scope ? scope + " " : "";
-  const DOWN = "cubic-bezier(.6,0,.9,.4)";     /* gathering: a fall */
-  const UP   = "cubic-bezier(.1,.7,.3,1)";     /* shedding speed: a rise */
+  /* Exact quadratics, not approximations: a cubic bezier with control points
+     at thirds reproduces t^2 precisely, so each segment IS a parabola - the
+     same curve gravity draws - and rise meeting fall at an apex forms one
+     smooth arc with no visible knee. */
+  const FALL = "cubic-bezier(0.33333, 0, 0.66667, 0.33333)";   /* accelerating */
+  const RISE = "cubic-bezier(0.33333, 0.66667, 0.66667, 1)";   /* decelerating */
   const SOFT = "cubic-bezier(.4,0,.2,1)";
   /* The die's transform is a percentage of its own box, so every height is
      converted out of scene units on the way in. */
@@ -380,36 +384,44 @@ ${S}.scene[data-scene="${id}"] .scene-disc {
   }
 
 /* Height. 0 rests on the floor line; positive is under it and clipped away.
-   The two bounces are only a little shorter than the throw that starts it, so
-   it keeps its energy rather than dying away over the cycle. */
+   Every mark is derived, not styled: with one gravity, the time a segment
+   takes goes with the square root of the distance it covers, so the first
+   bounce hangs for 94% of the first fall's time and the second for 87% -
+   which is what makes it read as one ball losing a little energy rather than
+   three unrelated hops. The first and last arcs are the longest because they
+   carry on below the floor. */
 @keyframes scLift${suffix} {
-  0%, 6%     { transform: translateY(${below}%); animation-timing-function: ${UP} }
-  26%        { transform: translateY(${h(p.apex)}%); animation-timing-function: ${DOWN} }
-  40%        { transform: translateY(0); animation-timing-function: ${UP} }
-  50%        { transform: translateY(${h(p.b1)}%); animation-timing-function: ${DOWN} }
-  60%        { transform: translateY(0); animation-timing-function: ${UP} }
-  70%        { transform: translateY(${h(p.b2)}%); animation-timing-function: ${DOWN} }
-  80%        { transform: translateY(0); animation-timing-function: ${DOWN} }
-  90%, 100%  { transform: translateY(${below}%) }
+  0%, 6%     { transform: translateY(${below}%); animation-timing-function: ${RISE} }
+  26.8%      { transform: translateY(${h(p.apex)}%); animation-timing-function: ${FALL} }
+  38.9%      { transform: translateY(0); animation-timing-function: ${RISE} }
+  50.2%      { transform: translateY(${h(p.b1)}%); animation-timing-function: ${FALL} }
+  61.5%      { transform: translateY(0); animation-timing-function: ${RISE} }
+  72%        { transform: translateY(${h(p.b2)}%); animation-timing-function: ${FALL} }
+  91.9%, 100%{ transform: translateY(${below}%) }
 }
 
-/* One long turn while it is out, then held so it comes back up square. */
+/* Spin is constant while airborne and only changes at a contact, so it is
+   linear within each flight and steps down at each impact: half the turn on
+   the big arc, then less on each bounce. It completes two whole revolutions,
+   so the loop closes square and the next rise starts clean. */
 @keyframes scTurn${suffix} {
-  0%, 6%    { transform: rotate(0deg) }
-  80%       { transform: rotate(${p.turn}deg) }
-  100%      { transform: rotate(${p.turn}deg) }
+  0%, 6%     { transform: rotate(0deg) }
+  38.9%      { transform: rotate(${(p.turn * 0.5).toFixed(0)}deg) }
+  61.5%      { transform: rotate(${(p.turn * 0.75).toFixed(0)}deg) }
+  91.9%, 100%{ transform: rotate(${p.turn}deg) }
 }
 
-/* Open, shut behind it, open again under the second bounce, shut after. */
+/* Open just ahead of the die, shut once its trailing edge has cleared, open
+   again while the second bounce is still up, shut once it is swallowed. */
 @keyframes scDisc${suffix} {
-  0%       { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
-  5%       { transform: translateY(-50%) scale(1) }
-  22%      { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
-  29%      { transform: translateY(-50%) scale(0) }
-  60%      { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
-  66%      { transform: translateY(-50%) scale(1) }
-  92%      { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
-  97%, 100%{ transform: translateY(-50%) scale(0) }
+  0%, 1%    { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
+  6%        { transform: translateY(-50%) scale(1) }
+  15%       { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
+  21%       { transform: translateY(-50%) scale(0) }
+  76%       { transform: translateY(-50%) scale(0); animation-timing-function: ${SOFT} }
+  81%       { transform: translateY(-50%) scale(1) }
+  91%       { transform: translateY(-50%) scale(1); animation-timing-function: ${SOFT} }
+  96%, 100% { transform: translateY(-50%) scale(0) }
 }`;
 }
 

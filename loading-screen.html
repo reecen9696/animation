@@ -59,36 +59,44 @@ body .scene[data-scene="portal"] .scene-disc {
   }
 
 /* Height. 0 rests on the floor line; positive is under it and clipped away.
-   The two bounces are only a little shorter than the throw that starts it, so
-   it keeps its energy rather than dying away over the cycle. */
+   Every mark is derived, not styled: with one gravity, the time a segment
+   takes goes with the square root of the distance it covers, so the first
+   bounce hangs for 94% of the first fall's time and the second for 87% -
+   which is what makes it read as one ball losing a little energy rather than
+   three unrelated hops. The first and last arcs are the longest because they
+   carry on below the floor. */
 @keyframes scLift_portal {
-  0%, 6%     { transform: translateY(119.2%); animation-timing-function: cubic-bezier(.1,.7,.3,1) }
-  26%        { transform: translateY(-61.5%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
-  40%        { transform: translateY(0); animation-timing-function: cubic-bezier(.1,.7,.3,1) }
-  50%        { transform: translateY(-53.8%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
-  60%        { transform: translateY(0); animation-timing-function: cubic-bezier(.1,.7,.3,1) }
-  70%        { transform: translateY(-46.2%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
-  80%        { transform: translateY(0); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
-  90%, 100%  { transform: translateY(119.2%) }
+  0%, 6%     { transform: translateY(119.2%); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
+  26.8%      { transform: translateY(-61.5%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
+  38.9%      { transform: translateY(0); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
+  50.2%      { transform: translateY(-53.8%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
+  61.5%      { transform: translateY(0); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
+  72%        { transform: translateY(-46.2%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
+  91.9%, 100%{ transform: translateY(119.2%) }
 }
 
-/* One long turn while it is out, then held so it comes back up square. */
+/* Spin is constant while airborne and only changes at a contact, so it is
+   linear within each flight and steps down at each impact: half the turn on
+   the big arc, then less on each bounce. It completes two whole revolutions,
+   so the loop closes square and the next rise starts clean. */
 @keyframes scTurn_portal {
-  0%, 6%    { transform: rotate(0deg) }
-  80%       { transform: rotate(720deg) }
-  100%      { transform: rotate(720deg) }
+  0%, 6%     { transform: rotate(0deg) }
+  38.9%      { transform: rotate(360deg) }
+  61.5%      { transform: rotate(540deg) }
+  91.9%, 100%{ transform: rotate(720deg) }
 }
 
-/* Open, shut behind it, open again under the second bounce, shut after. */
+/* Open just ahead of the die, shut once its trailing edge has cleared, open
+   again while the second bounce is still up, shut once it is swallowed. */
 @keyframes scDisc_portal {
-  0%       { transform: translateY(-50%) scale(0); animation-timing-function: cubic-bezier(.4,0,.2,1) }
-  5%       { transform: translateY(-50%) scale(1) }
-  22%      { transform: translateY(-50%) scale(1); animation-timing-function: cubic-bezier(.4,0,.2,1) }
-  29%      { transform: translateY(-50%) scale(0) }
-  60%      { transform: translateY(-50%) scale(0); animation-timing-function: cubic-bezier(.4,0,.2,1) }
-  66%      { transform: translateY(-50%) scale(1) }
-  92%      { transform: translateY(-50%) scale(1); animation-timing-function: cubic-bezier(.4,0,.2,1) }
-  97%, 100%{ transform: translateY(-50%) scale(0) }
+  0%, 1%    { transform: translateY(-50%) scale(0); animation-timing-function: cubic-bezier(.4,0,.2,1) }
+  6%        { transform: translateY(-50%) scale(1) }
+  15%       { transform: translateY(-50%) scale(1); animation-timing-function: cubic-bezier(.4,0,.2,1) }
+  21%       { transform: translateY(-50%) scale(0) }
+  76%       { transform: translateY(-50%) scale(0); animation-timing-function: cubic-bezier(.4,0,.2,1) }
+  81%       { transform: translateY(-50%) scale(1) }
+  91%       { transform: translateY(-50%) scale(1); animation-timing-function: cubic-bezier(.4,0,.2,1) }
+  96%, 100% { transform: translateY(-50%) scale(0) }
 }
   /* a look that hops is drawn smaller so its arc has somewhere to go */
   body[data-custom="jump"] .stage-lottie { width: clamp(132px, 15vw, 236px) }
