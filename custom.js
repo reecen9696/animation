@@ -19,6 +19,11 @@ const DIR = path.join(__dirname, "custom");
  * `dots` is a per-frame opacity per dot layer, which is how the die stops
  * reading as see-through - see the note above DECLUTTER below.
  *
+ * `round` overrides the die body's corner radius. The body is a plain hexagon
+ * with no tangents on its vertices - the curve comes from a Round Corners
+ * modifier sitting after the path, whose radius the file animates 40 -> 80 ->
+ * 40 as it rolls. Setting it pins that to one value.
+ *
  * `freeze` holds the animation on one frame, so the file becomes a still. The
  * die at frame 0 is the flat mark, and nothing is redrawn after that.
  *
@@ -104,6 +109,7 @@ const CUSTOM = {
         + "it lands back flat. No roll and no squash - it is a solid object.",
     recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
     dots: DECLUTTER,
+    round: 118,
     freeze: 0,
     jump: { ms: 1400, lift: 42, turn: 360, up: 0.12, down: 0.88, mount: 0.72 }
   },
@@ -185,12 +191,28 @@ function applyDots(d, table) {
   }
 }
 
+/**
+ * Pin the Round Corners modifier to one radius, on every shape that has one.
+ * The file animates it as the die rolls; a still has no roll to follow.
+ */
+function applyRound(d, radius) {
+  const walk = n => {
+    if (Array.isArray(n)) return n.forEach(walk);
+    if (!n || typeof n !== "object") return;
+    if (n.ty === "rd" && n.r) n.r = { a: 0, k: radius, ix: n.r.ix };
+    for (const k of Object.keys(n)) walk(n[k]);
+  };
+  walk(d.assets || []);
+  walk(d.layers || []);
+}
+
 /** The animation as the site should draw it: ready to hand to lottie. */
 function data(id) {
   const d = raw(id);
   if (CUSTOM[id].recolor) applyRecolor(d, CUSTOM[id].recolor);
   if (CUSTOM[id].hide) applyHide(d, CUSTOM[id].hide);
   if (CUSTOM[id].dots) applyDots(d, CUSTOM[id].dots);
+  if (CUSTOM[id].round !== undefined) applyRound(d, CUSTOM[id].round);
   if (CUSTOM[id].freeze !== undefined) {
     /* One frame long, so lottie draws that frame and never moves off it. The
        motion comes from CSS instead. */

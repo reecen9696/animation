@@ -148,7 +148,7 @@ ${blocks}
 
 <div class="loader">
   ${anim.markSvg({ ...anim.CUBE_PRESETS.tumble, trail: 4 }, "scatter-mark")}
-  <div class="stage-lottie" id="stage-lottie"></div>
+  <div class="stage-lottie lottie" id="stage-lottie"></div>
 </div>
 
 <div class="panel" id="panel">
