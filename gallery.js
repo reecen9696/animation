@@ -21,7 +21,7 @@ const GALLERY = [
           "circuit", "spoke"] },
   { mode: "Pulse wave II",
     ids: ["swell", "drum", "elastic", "windup", "rain", "emanate", "collapse",
-          "crossfire", "tide", "doppler", "echo"] },
+          "drain", "crossfire", "tide", "doppler", "echo"] },
   { mode: "Bump",
     ids: ["scatter", "shockwave", "cradle", "jelly", "heartbeat",
           "boil", "escapement", "swap", "equalizer", "twinkle",
@@ -161,7 +161,7 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
      54px box - which is itself worth seeing. The block's margin-top is auto so
      it hangs off the bottom however tall the stage above it turns out. */
   .ui{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding:14px 14px 10px}
-  .ui-btn{display:flex;align-items:center;justify-content:center;gap:10px;
+  .ui-btn{display:flex;align-items:center;justify-content:center;gap:2px;
           width:100%;height:54px;padding:0 14px;border:0;border-radius:6px;
           overflow:hidden;cursor:pointer;font:600 15px/1 inherit;color:#fff;
           background:#FF4D41;transition:background .12s}

@@ -57,9 +57,11 @@ const PRESETS = {
              bounce: true },
   /* Bounce with the same depth cue as `blink`: the dots fade as they shrink, so
      the wave reads as running away across the mark and coming back, not just
-     travelling over it. */
-  ebb:     { min: 0.76, dip: 0.30, over: 0.050, pulse: 440,  travel: 300,  rest: 0, fade: 0.55,
-             bounce: true },
+     travelling over it. Unlike `bounce` it does not run flat out - it holds at
+     the far corner (`turnRest`) and again at home (`rest`), so the two legs
+     read as two separate passes rather than one continuous shuttle. */
+  ebb:     { min: 0.76, dip: 0.30, over: 0.050, pulse: 440,  travel: 300,
+             rest: 520, turnRest: 420, fade: 0.55, bounce: true },
   /* The lap, closed and left running: `travel` is one whole lap, the eight
      steps are evenly spaced across it, and it wraps straight into the next. */
   circuit: { min: 0.80, dip: 0.40, over: 0.030, pulse: 400,  travel: 1600, rest: 0, fade: 0,
@@ -245,8 +247,12 @@ function timing(c) {
         starts[k] = [out];
         if (c.bounce) {
           /* The wave turns once the far dot has finished, so a dot's two pulses
-             can never overlap: the closer it is to the turn, the tighter they sit. */
-          const back = Math.round(c.travel + c.pulse + (1 - off[k]) * c.travel);
+             can never overlap: the closer it is to the turn, the tighter they
+             sit. `turnRest` holds the far corner before the wave comes back,
+             which is the only pause inside a cycle - `rest` is the one between
+             cycles - so a look can breathe at both ends of the run. */
+          const back = Math.round(c.travel + c.pulse + (c.turnRest || 0)
+                                  + (1 - off[k]) * c.travel);
           if (back > out + lengths[k]) starts[k].push(back);
         }
       }
@@ -1309,6 +1315,12 @@ const WAVE_PRESETS = {
   /* into the core, which lands deepest and pops back past neutral */
   collapse:  { mode:"bump", look:"wave", waveDir:"in", waveDepth:0.20,
                overAmt:0.16, rampDepth:1.6, pulseMs:660, travelMs:560, restMs:480 },
+  /* the same run into the core, faded: a dot dims as far as it dips, so the
+     ring reads as receding into the middle rather than merely shrinking. The
+     core takes the deepest hit of all and so goes the faintest. */
+  drain:     { mode:"bump", look:"wave", waveDir:"in", waveDepth:0.20,
+               overAmt:0.16, rampDepth:1.6, fadeAmt:0.60,
+               pulseMs:660, travelMs:560, restMs:480 },
   /* two waves leave opposite corners at once and cross in the middle */
   crossfire: { mode:"bump", look:"wave", waveDir:"collide", waveDepth:0.17,
                dipAt:0.38, pulseMs:560, travelMs:640, restMs:440 },
@@ -2346,12 +2358,13 @@ function resolveConfig(id, query = {}) {
   const map = {
     min:    ["min", 0.2, 0.99], dip:  ["dip", 0.1, 0.9],  over: ["over", 0, 0.3],
     pulse:  ["pulse", 120, 4000], travel: ["travel", 0, 4000],
-    rest:   ["rest", 0, 4000],  fade: ["fade", 0, 0.9]
+    rest:   ["rest", 0, 4000],  turnRest: ["turnRest", 0, 4000],
+    fade:   ["fade", 0, 0.9]
   };
   for (const [q, [key, lo, hi]] of Object.entries(map)) {
     if (query[q] != null) {
       const v = num(query[q], lo, hi);
-      if (v != null) c[key] = (key === "pulse" || key === "travel" || key === "rest") ? Math.round(v) : v;
+      if (v != null) c[key] = /^(pulse|travel|rest|turnRest)$/.test(key) ? Math.round(v) : v;
     }
   }
   const explicit = parseDelays(query.delays);
