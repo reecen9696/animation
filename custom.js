@@ -136,8 +136,8 @@ const CUSTOM = {
     freeze: 0,
     /* Heights are fractions of the scene box, not of the die - so the die can
        be resized without the throw changing shape or climbing out of frame. */
-    portal: { ms: 4200, floor: 0.86, die: 0.52, disc: 0.62,
-              apex: 0.32, b1: 0.28, b2: 0.24, below: 0.62, turn: 720 }
+    portal: { ms: 3200, floor: 0.86, die: 0.60, disc: 0.62,
+              apex: 0.32, b1: 0.28, b2: 0.24, below: 0.70, turn: 720 }
   },
   ghost: {
     file: "ghost.json",
@@ -375,7 +375,7 @@ ${S}.scene[data-scene="${id}"] .scene-die svg {
   }
 ${S}.scene[data-scene="${id}"] .scene-disc {
     position: absolute; left: 50%; top: ${(p.floor * 100).toFixed(1)}%;
-    width: ${(p.disc * 100).toFixed(1)}%; aspect-ratio: 12 / 1;
+    width: ${(p.disc * 100).toFixed(1)}%; aspect-ratio: 17 / 1;
     margin-left: ${(-p.disc * 50).toFixed(1)}%;
     background: #fff; border-radius: 50%;
     transform: translateY(-50%) scale(0);
@@ -392,11 +392,11 @@ ${S}.scene[data-scene="${id}"] .scene-disc {
    carry on below the floor. */
 @keyframes scLift${suffix} {
   0%, 6%     { transform: translateY(${below}%); animation-timing-function: ${RISE} }
-  26.8%      { transform: translateY(${h(p.apex)}%); animation-timing-function: ${FALL} }
-  38.9%      { transform: translateY(0); animation-timing-function: ${RISE} }
+  27.2%      { transform: translateY(${h(p.apex)}%); animation-timing-function: ${FALL} }
+  39.1%      { transform: translateY(0); animation-timing-function: ${RISE} }
   50.2%      { transform: translateY(${h(p.b1)}%); animation-timing-function: ${FALL} }
-  61.5%      { transform: translateY(0); animation-timing-function: ${RISE} }
-  72%        { transform: translateY(${h(p.b2)}%); animation-timing-function: ${FALL} }
+  61.3%      { transform: translateY(0); animation-timing-function: ${RISE} }
+  71.6%      { transform: translateY(${h(p.b2)}%); animation-timing-function: ${FALL} }
   91.9%, 100%{ transform: translateY(${below}%) }
 }
 
@@ -406,8 +406,8 @@ ${S}.scene[data-scene="${id}"] .scene-disc {
    so the loop closes square and the next rise starts clean. */
 @keyframes scTurn${suffix} {
   0%, 6%     { transform: rotate(0deg) }
-  38.9%      { transform: rotate(${(p.turn * 0.5).toFixed(0)}deg) }
-  61.5%      { transform: rotate(${(p.turn * 0.75).toFixed(0)}deg) }
+  39.1%      { transform: rotate(${(p.turn * 0.5).toFixed(0)}deg) }
+  61.3%      { transform: rotate(${(p.turn * 0.75).toFixed(0)}deg) }
   91.9%, 100%{ transform: rotate(${p.turn}deg) }
 }
 

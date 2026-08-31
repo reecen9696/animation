@@ -15333,24 +15333,24 @@
   }
 #c-portal .scene[data-scene="portal"] .scene-die {
     position: absolute; left: 50%; bottom: 0;
-    width: 52.0%; aspect-ratio: 1;
-    margin-left: -26.0%;
-    animation: scLift_portal 4200ms infinite both;
+    width: 60.0%; aspect-ratio: 1;
+    margin-left: -30.0%;
+    animation: scLift_portal 3200ms infinite both;
     will-change: transform;
   }
 #c-portal .scene[data-scene="portal"] .scene-die .lottie { width: 100%; height: 100% }
 #c-portal .scene[data-scene="portal"] .scene-die svg {
     display: block; width: 100%; height: 100%;
-    animation: scTurn_portal 4200ms linear infinite both;
+    animation: scTurn_portal 3200ms linear infinite both;
     will-change: transform;
   }
 #c-portal .scene[data-scene="portal"] .scene-disc {
     position: absolute; left: 50%; top: 86.0%;
-    width: 62.0%; aspect-ratio: 12 / 1;
+    width: 62.0%; aspect-ratio: 17 / 1;
     margin-left: -31.0%;
     background: #fff; border-radius: 50%;
     transform: translateY(-50%) scale(0);
-    animation: scDisc_portal 4200ms infinite both;
+    animation: scDisc_portal 3200ms infinite both;
     will-change: transform;
   }
 
@@ -15362,13 +15362,13 @@
    three unrelated hops. The first and last arcs are the longest because they
    carry on below the floor. */
 @keyframes scLift_portal {
-  0%, 6%     { transform: translateY(119.2%); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
-  26.8%      { transform: translateY(-61.5%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
-  38.9%      { transform: translateY(0); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
-  50.2%      { transform: translateY(-53.8%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
-  61.5%      { transform: translateY(0); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
-  72%        { transform: translateY(-46.2%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
-  91.9%, 100%{ transform: translateY(119.2%) }
+  0%, 6%     { transform: translateY(116.7%); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
+  27.2%      { transform: translateY(-53.3%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
+  39.1%      { transform: translateY(0); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
+  50.2%      { transform: translateY(-46.7%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
+  61.3%      { transform: translateY(0); animation-timing-function: cubic-bezier(0.33333, 0.66667, 0.66667, 1) }
+  71.6%      { transform: translateY(-40.0%); animation-timing-function: cubic-bezier(0.33333, 0, 0.66667, 0.33333) }
+  91.9%, 100%{ transform: translateY(116.7%) }
 }
 
 /* Spin is constant while airborne and only changes at a contact, so it is
@@ -15377,8 +15377,8 @@
    so the loop closes square and the next rise starts clean. */
 @keyframes scTurn_portal {
   0%, 6%     { transform: rotate(0deg) }
-  38.9%      { transform: rotate(360deg) }
-  61.5%      { transform: rotate(540deg) }
+  39.1%      { transform: rotate(360deg) }
+  61.3%      { transform: rotate(540deg) }
   91.9%, 100%{ transform: rotate(720deg) }
 }
 
