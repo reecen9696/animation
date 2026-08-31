@@ -203,6 +203,24 @@ const CUSTOM = {
               shadow: { scale: 0.34, opacity: 0.92, far: 0.38, grey: 0.14,
                         width: 0.84, shrinkX: 0.78, shrinkY: 0.42 } }
   },
+  /* No portal, no entry, no exit: the die is simply always bouncing, one arc
+     per cycle with the contact on the loop seam so it closes without a join.
+     It rolls off every landing and its shadow breathes underneath -
+     chuteshadow's die in perpetuity. */
+  rebound: {
+    file: "dice.json",
+    source: "Scatter loading (black dice) v6.1 - 1 sec",
+    note: "The die bouncing on the spot, over and over: a roll off every "
+        + "landing, the shadow breathing underneath.",
+    recolor: { "#000000": "#FFFFFF", "#F3F3F3": "#000000" },
+    round: 100,
+    freeze: 0,
+    portal: { steady: true, ms: 1500, floor: 0.86, die: 0.60, disc: 0,
+              sink: 0.285, inkGap: 0.128, apex: 0.50, turn: 0,
+              impactRoll: true, rollEnd: 26, rollFrac: 0.8,
+              shadow: { scale: 0.34, opacity: 0.92, far: 0.38, grey: 0.14,
+                        width: 0.84, shrinkX: 0.78, shrinkY: 0.42 } }
+  },
   ghost: {
     file: "ghost.json",
     source: "Scatter loading v5",
@@ -415,7 +433,14 @@ function portalCss(id, scope, suffix = "") {
   const h = v => (-v / p.die * 100).toFixed(1);
   const below = (p.below / p.die * 100).toFixed(1);
 
-  const { HOLD, apexAt, land1, peak1, land2, peak2, gone } = portalMarks(p);
+  /* A steady look never enters or leaves: one arc per cycle, the contact on
+     the seam, so the loop closes mid-landing and reads as endless. The marks
+     collapse to that shape and everything downstream - shadow, turn, clip -
+     derives from them the same way it does for the full timeline. */
+  const steady = !!p.steady;
+  const { HOLD, apexAt, land1, peak1, land2, peak2, gone } = steady
+    ? { HOLD: 0, apexAt: 50, land1: 100, peak1: 50, land2: 100, peak2: 50, gone: 100 }
+    : portalMarks(p);
   const pc = v => v.toFixed(1) + "%";
 
   /* The disc has to be open at each crossing and shut in between, so its cues
@@ -524,6 +549,23 @@ ${(() => {
     const oAt = h => +(sh.opacity - (sh.opacity - (sh.far === undefined ? sh.opacity : sh.far)) * h / p.apex).toFixed(3);
     const K = (at, h, ease, op) => `  ${at.toFixed(1)}% { transform: ${T(h)}; opacity: ${op === undefined ? oAt(h) : op}`
       + (ease ? `; animation-timing-function: ${ease}` : "") + ` }`;
+    if (steady) return `${S}.scene[data-scene="${id}"] .scene-shade {
+    position: absolute; left: 0; right: 0; top: -80%;
+    height: ${(p.floor * 100 + 80).toFixed(1)}%;
+    overflow: hidden; pointer-events: none;
+    transform-origin: 50% 100%;
+    transform: ${T(0)}; opacity: ${sh.opacity};
+    filter: brightness(0) invert(${sh.grey});
+    animation: scShade${suffix} ${p.ms}ms infinite both;
+    will-change: transform, opacity;
+  }
+
+@keyframes scShade${suffix} {
+  0%   { transform: ${T(0)}; opacity: ${sh.opacity}; animation-timing-function: ${RISE} }
+  50%  { transform: ${T(p.apex)}; opacity: ${oAt(p.apex)}; animation-timing-function: ${FALL} }
+  100% { transform: ${T(0)}; opacity: ${sh.opacity} }
+}
+`;
     return `${S}.scene[data-scene="${id}"] .scene-shade {
     position: absolute; left: 0; right: 0; top: -80%;
     height: ${(p.floor * 100 + 80).toFixed(1)}%;
@@ -565,13 +607,17 @@ ${disc}${turn}
 
 /* Height. 0 rests on the floor line; positive is under it and clipped away. */
 @keyframes scLift${suffix} {
-  0%, ${pc(HOLD)}   { transform: translateY(${below}%); animation-timing-function: ${RISE} }
+${steady
+  ? `  0%   { transform: translateY(0); animation-timing-function: ${RISE} }
+  50%  { transform: translateY(${h(p.apex)}%); animation-timing-function: ${FALL} }
+  100% { transform: translateY(0) }`
+  : `  0%, ${pc(HOLD)}   { transform: translateY(${below}%); animation-timing-function: ${RISE} }
   ${pc(apexAt)}     { transform: translateY(${h(p.apex)}%); animation-timing-function: ${FALL} }
   ${pc(land1)}      { transform: translateY(0); animation-timing-function: ${RISE} }
   ${pc(peak1)}      { transform: translateY(${h(p.b1)}%); animation-timing-function: ${FALL} }
   ${pc(land2)}      { transform: translateY(0); animation-timing-function: ${RISE} }
   ${pc(peak2)}      { transform: translateY(${h(p.b2)}%); animation-timing-function: ${FALL} }
-  ${pc(gone)}, 100% { transform: translateY(${below}%) }
+  ${pc(gone)}, 100% { transform: translateY(${below}%) }`}
 }`;
 }
 
@@ -588,7 +634,6 @@ function rollSpec() {
   for (const id of ids()) {
     const p = CUSTOM[id] && CUSTOM[id].portal;
     if (!p || !p.impactRoll) continue;
-    const m = portalMarks(p);
     /* A window per contact. The roll takes `rollFrac` of the gap to the next
        one rather than all of it, so it finishes early and the rest of the
        bounce is spent sitting on the opening frame - which is the only moment
@@ -601,6 +646,12 @@ function rollSpec() {
     const f = p.rollFrac === undefined ? 1 : p.rollFrac;
     const at = i => Array.isArray(f) ? (f[i] === undefined ? f[f.length - 1] : f[i]) : f;
     const win = (from, to, i) => [from, from + (to - from) * at(i)];
+    if (p.steady) {
+      /* a steady bounce has one landing per cycle, at the seam */
+      out[id] = { ms: p.ms, frames: p.rollEnd, windows: [win(0, 100, 0)] };
+      continue;
+    }
+    const m = portalMarks(p);
     out[id] = { ms: p.ms, frames: p.rollEnd,
                 windows: [win(m.land1, m.land2, 0), win(m.land2, m.gone, 1)] };
   }
