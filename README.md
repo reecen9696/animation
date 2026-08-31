@@ -4,6 +4,8 @@ Two animations for the seven-dot Scatter mark, plus a loading-screen route to
 see them in context.
 
 - **Pulse** — a wave crossing the mark on the top-left → bottom-right diagonal.
+  `blink` and `ebb` add depth to it: opacity follows the shrink, so a dot that
+  dips small also reads as far away.
 - **Orbit** — the six outer dots bloom away from the core while the mark winds
   back, then it spins a full turn and everything pulls back in.
 - **Cube** — a GameCube-boot-style tumble: the dots tuck into a tight cluster,
@@ -59,12 +61,12 @@ No dependencies — Node's stdlib only.
 | `/` | Index of the variants |
 | `/test/:id` | Loading screen: app screenshot, 50% black scrim, mark centred on top |
 | `/test` | Same, default preset |
-| `/gallery` | Every look side by side, five across, each with a way through to `/test` |
+| `/gallery` | Every look side by side, one titled row per family, five across, each with a way through to `/test` |
 | `/workbench` | The tuning workbench |
 | `/public/*` | Static assets |
 
-`:id` selects a preset when it names one — `pulse`, `breathe`, `snap`, `ripple`,
-`around`, `circuit`, `spoke`, `bounce` (pulse), `bloom`, `snappy`, `wide`, `double` (orbit), or `tumble`, `hardware`,
+`:id` selects a preset when it names one — `pulse`, `breathe`, `snap`, `blink`,
+`ripple`, `around`, `circuit`, `spoke`, `bounce`, `ebb` (pulse), `bloom`, `snappy`, `wide`, `double` (orbit), or `tumble`, `hardware`,
 `quick`, `heavy` (cube), or `roll`, `thud`, `skip`, `lap` (roll), or `dash`,
 `fling`, `amble`, `yoyo` (dash), or `track`, `streak` (track).
 Any other value is treated as an opaque id — a game, session or round — and the
@@ -592,3 +594,30 @@ Two pulses cannot be said with one `animation-delay`, so `bounce` drops the
 per-dot delay and gives each dot its own keyframes spanning the whole cycle,
 holding at rest between its pulses. Everything else — the shared curve, the
 `?min=` overrides, the debug readout — works the same.
+
+### Two waves that fade with the shrink: `blink` and `ebb`
+
+`blink` is `snap` and `ebb` is `bounce` — same curve, same timings, same
+everything — with one knob turned up: `fade: 0.55`.
+
+`fade` ties opacity to how far a dot has shrunk, not to time:
+
+```js
+opacity = 1 - fade * (1 - scale) / (1 - min)
+```
+
+At full size the dot is opaque; at `min` (0.76 for both) it is at **45%**, and
+in between it dims in step with the scale. The dot never disappears, and the
+overshoot past 1 clamps to opaque rather than going brighter than white.
+
+Because the dip is what dims it, a small dot and a distant dot read as the same
+thing: the wave stops looking like a size change passing across a flat mark and
+starts looking like the dots dropping back into depth and rising again. `ebb`
+gets the most out of it — it already runs out to the far corner and back, so the
+fade turns the travel into an actual recession, dimmest at the turn.
+
+`ripple` has carried a light `fade: 0.18` since the beginning; these two are the
+same idea taken far enough to be the point of the look rather than a garnish.
+The keyframe writer has always emitted the `opacity` line whenever `fade` is
+non-zero, in both the single-pulse and the per-dot (`bounce`) paths, so neither
+preset needed any new machinery — only the number.

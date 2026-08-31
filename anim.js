@@ -41,6 +41,9 @@ const PRESETS = {
   pulse:   { min: 0.84, dip: 0.45, over: 0.020, pulse: 900,  travel: 620,  rest: 500, fade: 0 },
   breathe: { min: 0.90, dip: 0.50, over: 0.000, pulse: 1500, travel: 1000, rest: 800, fade: 0 },
   snap:    { min: 0.76, dip: 0.30, over: 0.050, pulse: 520,  travel: 380,  rest: 500, fade: 0 },
+  /* Snap, with depth: a dot dims in step with how far it has shrunk, so the
+     small end of the pulse also reads as the far end. Bottoms out at 45%. */
+  blink:   { min: 0.76, dip: 0.30, over: 0.050, pulse: 520,  travel: 380,  rest: 500, fade: 0.55 },
   ripple:  { min: 0.86, dip: 0.42, over: 0.030, pulse: 760,  travel: 1240, rest: 180, fade: 0.18 },
   /* A lap of the ring rather than a run down the diagonal: `travel` is the
      spread across the whole order, so each dot is 1/6th of it behind the last. */
@@ -51,6 +54,11 @@ const PRESETS = {
      the last dot home is the first away, and a pulse ends at full size, so the
      next wave leaves the moment this one has recovered. */
   bounce:  { min: 0.76, dip: 0.30, over: 0.050, pulse: 440,  travel: 300,  rest: 0, fade: 0,
+             bounce: true },
+  /* Bounce with the same depth cue as `blink`: the dots fade as they shrink, so
+     the wave reads as running away across the mark and coming back, not just
+     travelling over it. */
+  ebb:     { min: 0.76, dip: 0.30, over: 0.050, pulse: 440,  travel: 300,  rest: 0, fade: 0.55,
              bounce: true },
   /* The lap, closed and left running: `travel` is one whole lap, the eight
      steps are evenly spaced across it, and it wraps straight into the next. */

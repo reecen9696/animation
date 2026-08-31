@@ -11,18 +11,21 @@ const esc = s => String(s).replace(/[&<>"']/g, ch =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
 /* The gallery: every look worth comparing, side by side, each with a way
-   through to the real loading screen. One flat grid, five across, so any two
-   can be compared without scrolling past a heading. The family each look
-   belongs to rides along on its own card instead. */
+   through to the real loading screen. One titled row per family, five across,
+   so a family can be taken in whole and its members compared against each
+   other before being compared across the page. The title carries the family
+   name, so the cards below it no longer repeat it. */
 const GALLERY = [
   { mode: "Pulse wave",
-    ids: ["pulse", "snap", "ripple", "around", "bounce", "circuit", "spoke"] },
+    ids: ["pulse", "snap", "blink", "ripple", "around", "bounce", "ebb",
+          "circuit", "spoke"] },
   { mode: "Pulse wave II",
     ids: ["swell", "drum", "elastic", "windup", "rain", "emanate", "collapse",
           "crossfire", "tide", "doppler", "echo"] },
-  { mode: "Bump", ids: ["scatter", "shockwave", "cradle", "jelly", "heartbeat"] },
-  { mode: "Bump", ids: ["boil", "escapement", "swap", "equalizer", "twinkle"] },
-  { mode: "Bump", ids: ["glide", "fathom", "servo", "scan", "float"] },
+  { mode: "Bump",
+    ids: ["scatter", "shockwave", "cradle", "jelly", "heartbeat",
+          "boil", "escapement", "swap", "equalizer", "twinkle",
+          "glide", "fathom", "servo", "scan", "float"] },
   { mode: "Orbit spin", ids: ["bloom", "snappy"] },
   { mode: "Corner roll", ids: ["thud"] },
   { mode: "Smear", ids: ["smear", "hard"] },
@@ -32,21 +35,24 @@ const GALLERY = [
 ];
 
 function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
-  /* Each cell gets its own scope and keyframe suffix, so eight animations
-     can share one stylesheet without colliding. */
-  const cells = [], css = [];
-  for (const group of GALLERY) {
-    for (const id of group.ids) {
+  /* Each cell gets its own scope and keyframe suffix, so every animation on
+     the page can share one stylesheet without colliding. */
+  const css = [];
+  const rows = GALLERY.map(group => ({
+    mode: group.mode,
+    cells: group.ids.map(id => {
       const c = anim.resolveConfig(id, {});
       const sfx = "_" + id.replace(/[^a-z0-9]/gi, "");
       css.push(anim.animCss(c, ".mark", ".mark .dot", sfx, `#c-${id}`));
-      cells.push({ id, group, config: c, cycle: anim.cycleOf(c) });
-    }
-  }
+      return { id, config: c, cycle: anim.cycleOf(c) };
+    })
+  }));
 
-  const card = ({ id, group, config, cycle }) => {
+  const card = ({ id, config, cycle }) => {
+    /* The row heading names the family, so the card only has to say which
+       look it is and how long its cycle runs. */
     const meta = `<div class="meta"><h3>${esc(id)}</h3>`
-      + `<span>${esc(group.mode)} &middot; ${cycle}ms</span></div>`;
+      + `<span>${cycle}ms</span></div>`;
     if (config.mode === "dash") {
       /* Travel is a percentage of the mark's own width, so the band that holds
          it is sized in mark widths too and the two can never drift apart. The
@@ -73,7 +79,14 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
       </article>`;
   };
 
-  const sections = cells.map(card).join("\n");
+  /* Each family is its own heading and its own grid, so a row never runs on
+     into the next one and the five-across rhythm restarts at every title. */
+  const sections = rows.map(row => `
+  <section class="row">
+    <h2>${esc(row.mode)} <span>${row.cells.length}</span></h2>
+    <div class="grid">${row.cells.map(card).join("\n")}
+    </div>
+  </section>`).join("\n");
 
   return `<!doctype html>
 <html lang="en">
@@ -86,7 +99,15 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
   body{margin:0;padding:56px 28px 80px;background:#0b0d0f;color:#e8ebef;
        font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
   .wrap{max-width:1340px;margin:0 auto;--mw:96px}
-  h1{margin:0 0 30px;font-size:30px;letter-spacing:-.02em}
+  h1{margin:0 0 34px;font-size:30px;letter-spacing:-.02em}
+
+  .row{margin-bottom:44px}
+  .row h2{display:flex;align-items:center;gap:10px;margin:0 0 14px;
+          font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+          color:#e5a040}
+  .row h2::after{content:"";flex:1;height:1px;background:#1e252c}
+  .row h2 span{font-weight:400;letter-spacing:.04em;color:#6b7581;
+               font-variant-numeric:tabular-nums}
 
   .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
   @media (max-width:1180px){.grid{grid-template-columns:repeat(4,1fr)}}
@@ -145,8 +166,7 @@ ${css.join("\n\n")}
 <body>
 <div class="wrap">
   <h1>Scatter mark &middot; every look</h1>
-  <div class="grid">${sections}
-  </div>
+${sections}
   <div class="more">
     Every look on this page has a card on the <a href="/">index</a> with its
     numbers; tune new ones in the <a href="/workbench">workbench</a>.
