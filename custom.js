@@ -134,7 +134,10 @@ const CUSTOM = {
     dots: DECLUTTER,
     round: 74,
     freeze: 0,
-    portal: { ms: 4200, floor: 0.70, die: 0.40, disc: 0.88, lift: 150, turn: 720 }
+    /* Heights are fractions of the scene box, not of the die - so the die can
+       be resized without the throw changing shape or climbing out of frame. */
+    portal: { ms: 4200, floor: 0.86, die: 0.52, disc: 0.62,
+              apex: 0.32, b1: 0.28, b2: 0.24, below: 0.62, turn: 720 }
   },
   ghost: {
     file: "ghost.json",
@@ -342,7 +345,10 @@ function portalCss(id, scope, suffix = "") {
   const DOWN = "cubic-bezier(.6,0,.9,.4)";     /* gathering: a fall */
   const UP   = "cubic-bezier(.1,.7,.3,1)";     /* shedding speed: a rise */
   const SOFT = "cubic-bezier(.4,0,.2,1)";
-  const below = p.lift;                        /* far enough under to be clipped */
+  /* The die's transform is a percentage of its own box, so every height is
+     converted out of scene units on the way in. */
+  const h = v => (-v / p.die * 100).toFixed(1);
+  const below = (p.below / p.die * 100).toFixed(1);
 
   return `${S}.scene[data-scene="${id}"] { position: relative; overflow: visible }
 ${S}.scene[data-scene="${id}"] .scene-clip {
@@ -378,11 +384,11 @@ ${S}.scene[data-scene="${id}"] .scene-disc {
    it keeps its energy rather than dying away over the cycle. */
 @keyframes scLift${suffix} {
   0%, 6%     { transform: translateY(${below}%); animation-timing-function: ${UP} }
-  26%        { transform: translateY(-96%); animation-timing-function: ${DOWN} }
+  26%        { transform: translateY(${h(p.apex)}%); animation-timing-function: ${DOWN} }
   40%        { transform: translateY(0); animation-timing-function: ${UP} }
-  50%        { transform: translateY(-84%); animation-timing-function: ${DOWN} }
+  50%        { transform: translateY(${h(p.b1)}%); animation-timing-function: ${DOWN} }
   60%        { transform: translateY(0); animation-timing-function: ${UP} }
-  70%        { transform: translateY(-74%); animation-timing-function: ${DOWN} }
+  70%        { transform: translateY(${h(p.b2)}%); animation-timing-function: ${DOWN} }
   80%        { transform: translateY(0); animation-timing-function: ${DOWN} }
   90%, 100%  { transform: translateY(${below}%) }
 }

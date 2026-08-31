@@ -15328,13 +15328,13 @@
 #c-portal .scene[data-scene="portal"] { position: relative; overflow: visible }
 #c-portal .scene[data-scene="portal"] .scene-clip {
     position: absolute; left: 0; right: 0; top: -60%;
-    height: 130.0%;
+    height: 146.0%;
     overflow: hidden; pointer-events: none;
   }
 #c-portal .scene[data-scene="portal"] .scene-die {
     position: absolute; left: 50%; bottom: 0;
-    width: 40.0%; aspect-ratio: 1;
-    margin-left: -20.0%;
+    width: 52.0%; aspect-ratio: 1;
+    margin-left: -26.0%;
     animation: scLift_portal 4200ms infinite both;
     will-change: transform;
   }
@@ -15345,9 +15345,9 @@
     will-change: transform;
   }
 #c-portal .scene[data-scene="portal"] .scene-disc {
-    position: absolute; left: 50%; top: 70.0%;
-    width: 88.0%; aspect-ratio: 12 / 1;
-    margin-left: -44.0%;
+    position: absolute; left: 50%; top: 86.0%;
+    width: 62.0%; aspect-ratio: 12 / 1;
+    margin-left: -31.0%;
     background: #fff; border-radius: 50%;
     transform: translateY(-50%) scale(0);
     animation: scDisc_portal 4200ms infinite both;
@@ -15358,14 +15358,14 @@
    The two bounces are only a little shorter than the throw that starts it, so
    it keeps its energy rather than dying away over the cycle. */
 @keyframes scLift_portal {
-  0%, 6%     { transform: translateY(150%); animation-timing-function: cubic-bezier(.1,.7,.3,1) }
-  26%        { transform: translateY(-96%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
+  0%, 6%     { transform: translateY(119.2%); animation-timing-function: cubic-bezier(.1,.7,.3,1) }
+  26%        { transform: translateY(-61.5%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
   40%        { transform: translateY(0); animation-timing-function: cubic-bezier(.1,.7,.3,1) }
-  50%        { transform: translateY(-84%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
+  50%        { transform: translateY(-53.8%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
   60%        { transform: translateY(0); animation-timing-function: cubic-bezier(.1,.7,.3,1) }
-  70%        { transform: translateY(-74%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
+  70%        { transform: translateY(-46.2%); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
   80%        { transform: translateY(0); animation-timing-function: cubic-bezier(.6,0,.9,.4) }
-  90%, 100%  { transform: translateY(150%) }
+  90%, 100%  { transform: translateY(119.2%) }
 }
 
 /* One long turn while it is out, then held so it comes back up square. */
