@@ -11,9 +11,9 @@ const anim = require("./anim.js");
 const BG = process.argv[2] || "public/background-small.jpg";
 const dataUri = "data:image/jpeg;base64," + fs.readFileSync(BG).toString("base64");
 
-const ALL = { ...anim.PRESETS, ...anim.ORBIT_PRESETS, ...anim.CUBE_PRESETS,
-              ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS, ...anim.DROP_PRESETS,
-              ...anim.DASH_PRESETS, ...anim.TRAIL_PRESETS };
+const ALL = { ...anim.PRESETS, ...anim.BUMP_PRESETS, ...anim.ORBIT_PRESETS,
+              ...anim.CUBE_PRESETS, ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS,
+              ...anim.DROP_PRESETS, ...anim.DASH_PRESETS, ...anim.TRAIL_PRESETS };
 const ids = Object.keys(ALL);
 
 /* Every preset's keyframes are inlined and scoped to body[data-preset], so

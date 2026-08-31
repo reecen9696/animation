@@ -1065,6 +1065,592 @@ function orbitKeyframes(c, suffix = "") {
   return blocks.join("\n\n");
 }
 
+/* ----------------------------------------------------------------- bump */
+
+/**
+ * Ten looks that move the dots rather than only scaling them in place.
+ *
+ * They all share one engine. A look is a pure function of (dot, time in the
+ * cycle) returning that dot's transform; `bumpKeyframes` samples it across the
+ * cycle and thins the samples back down to the frames that actually carry the
+ * shape, so a new look is a few lines of maths rather than its own generator.
+ *
+ * Every look is periodic: what it returns at `cycle` matches what it returns
+ * at 0, so the loop closes without a seam. The exception is deliberate - an
+ * impact snaps in a single frame, which is what an impact should do.
+ */
+
+const TAU = Math.PI * 2;
+const easeOutP = (t, p = 3) => 1 - Math.pow(1 - clamp(t, 0, 1), p);
+const wrapDelta = (d, cycle) => ((d % cycle) + cycle) % cycle;
+/** Rises and falls once across `ms`: for a shock that has to travel to arrive. */
+const halfSine = (t, ms) => (t > 0 && t < ms) ? Math.sin(Math.PI * t / ms) : 0;
+/** Full at the moment of contact, gone by `ms`: for a shock that lands. */
+const impact = (t, ms) => (t >= 0 && t < ms) ? Math.pow(1 - t / ms, 2) : 0;
+
+/** Deterministic per-dot jitter: the same mark every run, no Math.random. */
+function hash01(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 1000000) / 1000000;
+}
+
+const CORE = CENTERS.core;
+
+/** Angle from the core out to each dot, in degrees (screen space, y down). */
+const ANGLE = (() => {
+  const out = {};
+  for (const k of Object.keys(CENTERS)) {
+    out[k] = Math.atan2(CENTERS[k][1] - CORE[1], CENTERS[k][0] - CORE[0]) / RAD;
+  }
+  return out;
+})();
+
+/** Normalise a per-dot measure to 0..1: 0 is the smallest, 1 the largest. */
+function spread01(pick, keys = Object.keys(CENTERS)) {
+  const raw = {};
+  let lo = Infinity, hi = -Infinity;
+  for (const k of keys) { raw[k] = pick(k); lo = Math.min(lo, raw[k]); hi = Math.max(hi, raw[k]); }
+  const span = (hi - lo) || 1, out = {};
+  for (const k of Object.keys(CENTERS)) out[k] = k in raw ? (raw[k] - lo) / span : 0;
+  return out;
+}
+
+/** Top to bottom, left to right: the two orders a wave can run in. */
+const YPOS = spread01(k => CENTERS[k][1]);
+const XPOS = spread01(k => CENTERS[k][0]);
+/**
+ * The hexagon is not quite regular: {bottom, tr, tl} sit 9.11 out and
+ * {top, lr, ll} 9.58, so a wave leaving the core reaches them as two triads
+ * rather than all six at once. Worth staggering by - it is the mark's own
+ * geometry doing the timing.
+ */
+const RPOS = spread01(k => RADIUS[k], Object.keys(CENTERS).filter(k => k !== "core"));
+
+/**
+ * The mark's symmetry step is 120 degrees, so a dot can only travel to another
+ * dot's seat two positions round - which is also the only move that keeps the
+ * three ovals on oval seats and the three circles on circle seats.
+ */
+const STEP_CW = { top: "lr", lr: "ll", ll: "top", tr: "bottom", bottom: "tl", tl: "tr" };
+const STEP_CCW = (() => {
+  const out = {};
+  for (const [k, v] of Object.entries(STEP_CW)) out[v] = k;
+  return out;
+})();
+const stepKey = (key, n, cw) => {
+  const map = cw ? STEP_CW : STEP_CCW;
+  let k = key;
+  for (let i = 0; i < ((n % 3) + 3) % 3; i++) k = map[k];
+  return k;
+};
+
+/**
+ * Offset of `key` after `done` whole steps plus `u` of the next one, swinging
+ * out by `lift` on the way. Radius is lerped seat to seat rather than held, so
+ * a dot lands exactly on the seat it is aiming at.
+ */
+function arcAt(key, done, u, cw, lift) {
+  const from = stepKey(key, done, cw), to = stepKey(from, 1, cw);
+  const a = (ANGLE[from] + (cw ? 120 : -120) * u) * RAD;
+  const r = RADIUS[from] + (RADIUS[to] - RADIUS[from]) * clamp(u, 0, 1) + lift;
+  return [CORE[0] + Math.cos(a) * r - CENTERS[key][0],
+          CORE[1] + Math.sin(a) * r - CENTERS[key][1]];
+}
+
+/** Where each dot sits along an axis at `deg`: 0 is struck first, 1 last. */
+const axisCache = new Map();
+function axisPos(deg) {
+  const memo = deg.toFixed(2);
+  if (axisCache.has(memo)) return axisCache.get(memo);
+  const a = deg * RAD, ux = Math.cos(a), uy = Math.sin(a);
+  const out = spread01(k => (CENTERS[k][0] - CORE[0]) * ux + (CENTERS[k][1] - CORE[1]) * uy);
+  axisCache.set(memo, out);
+  return out;
+}
+
+/* An order round the mark where no two consecutive dots are neighbours. */
+const TWINKLE = ["top", "bottom", "tr", "core", "ll", "lr", "tl"];
+
+const rest = () => ({ dx: 0, dy: 0, sx: 1, sy: 1, rot: 0, ang: 0, op: 1 });
+const evenly = (n, gap) => n * gap;
+
+const BUMP_LOOKS = {
+
+  /* Scatter: the six outer dots burst apart in their own directions, hang
+     there, then snap home past the mark and settle. The core takes the
+     reunion as a thump. The brand name, animated. */
+  scatter: {
+    op: true,
+    cycle: c => c.burstMs + c.hangMs + c.homeMs + c.bumpRest,
+    marks: c => [c.burstMs, c.burstMs + c.hangMs, c.burstMs + c.hangMs + c.homeMs],
+    at(key, tm, c) {
+      const o = rest();
+      const hangEnd = c.burstMs + c.hangMs, homeEnd = hangEnd + c.homeMs;
+      let a;
+      if (tm < c.burstMs) a = easeOutP(tm / c.burstMs, 3);
+      else if (tm < hangEnd) a = 1 + 0.04 * smoother((tm - c.burstMs) / c.hangMs);
+      else if (tm < homeEnd) a = 1 - easeOutBack((tm - hangEnd) / c.homeMs, backTension(c.snapOver));
+      else a = 0;
+      const out = clamp(a, 0, 1);
+      const land = halfSine(tm - homeEnd, c.thumpMs);
+      if (key === "core") {
+        const s = 1 - c.shrink * 0.5 * out + c.thump * land;
+        o.sx = o.sy = s;
+        return o;
+      }
+      /* Each dot leaves on its own heading and its own distance: a radial
+         bloom is the orbit look, and this has to read as untidy. */
+      const dir = (ANGLE[key] + (hash01(key + "d") * 2 - 1) * c.spin) * RAD;
+      const far = c.spread * (1 - c.vary / 2 + c.vary * hash01(key + "r"));
+      o.dx = Math.cos(dir) * far * a;
+      o.dy = Math.sin(dir) * far * a;
+      o.sx = o.sy = 1 - c.shrink * out + c.thump * 0.6 * land;
+      o.op = 1 - c.bumpFade * out;
+      return o;
+    }
+  },
+
+  /* Shockwave: the core takes a hit and compresses, then the ring is pushed
+     out ahead of it and springs back. The two triads leave a beat apart
+     because they really do sit at two different radii. */
+  shockwave: {
+    op: true,
+    cycle: c => c.coreLead + c.waveStagger + c.waveMs + c.springMs + c.bumpRest,
+    marks: c => [c.coreLead, c.coreLead + c.waveStagger, c.coreLead + c.waveStagger + c.waveMs],
+    at(key, tm, c) {
+      const o = rest();
+      if (key === "core") {
+        const sink = c.coreLead * 0.6, back = 180, ease = 260;
+        let s = 1;
+        if (tm < sink) s = 1 - c.sinkAmt * easeOutP(tm / sink, 2);
+        else if (tm < sink + back)
+          s = (1 - c.sinkAmt) + (1 + c.corePop - (1 - c.sinkAmt)) * smoother((tm - sink) / back);
+        else if (tm < sink + back + ease)
+          s = (1 + c.corePop) - c.corePop * smoother((tm - sink - back) / ease);
+        o.sx = o.sy = s;
+        return o;
+      }
+      const t = tm - (c.coreLead + RPOS[key] * c.waveStagger);
+      let f = 0;
+      if (t > 0 && t < c.waveMs) f = easeOutP(t / c.waveMs, 2.6);
+      else if (t >= c.waveMs) {
+        const u = (t - c.waveMs) / c.springMs;
+        /* Back home on a damped spring, tapered so it is exactly home by the
+           end of the window and the loop has nothing to snap. */
+        f = u >= 1 ? 0 : Math.exp(-4.2 * u) * Math.cos(2.3 * Math.PI * u) * (1 - Math.pow(u, 4));
+      }
+      const v = RADIAL[key], out = Math.max(f, 0);
+      o.dx = v[0] * c.ringPush * f;
+      o.dy = v[1] * c.ringPush * f;
+      o.sx = o.sy = 1 - c.shrink * out;
+      o.op = 1 - c.bumpFade * out;
+      return o;
+    }
+  },
+
+  /* Cradle: a Newton's cradle on the mark's vertical axis. The top dot swings
+     out and falls back; the impulse runs down through every dot in turn and
+     throws the bottom one out; it returns and sends it back up. */
+  cradle: {
+    /* The shock has to cross the mark before it can throw anything, so a lap
+       is two swings plus two crossings - and the ball leaves at the instant
+       the shock reaches it, not before. */
+    cycle: c => 2 * (c.swingMs + c.travelMs),
+    marks: c => [c.travelMs, c.travelMs + c.swingMs,
+                 2 * c.travelMs + c.swingMs, 2 * (c.travelMs + c.swingMs)],
+    at(key, tm, c) {
+      const o = rest(), lead = c.travelMs, cyc = 2 * (c.swingMs + lead);
+      /* Bottom lands at 0 and the shock runs up; top lands at lead + swingMs
+         and it runs back down. Each end dot leaves as the shock arrives. */
+      const up = impact(wrapDelta(tm - (1 - YPOS[key]) * lead, cyc), c.thumpMs);
+      const down = impact(wrapDelta(tm - (lead + c.swingMs + YPOS[key] * lead), cyc), c.thumpMs);
+      const from = key === "top" ? lead : key === "bottom" ? 2 * lead + c.swingMs : null;
+      if (from !== null && tm >= from && tm < from + c.swingMs) {
+        /* A pendulum: slowest at the apex, fastest at contact, stretched with
+           its own speed so the departure and the arrival both read. */
+        const u = (tm - from) / c.swingMs, speed = Math.abs(Math.cos(Math.PI * u));
+        o.dy = (key === "top" ? -1 : 1) * c.swing * Math.sin(Math.PI * u);
+        o.sy = 1 + c.stretch * speed;
+        o.sx = 1 - c.stretch * 0.6 * speed;
+        return o;
+      }
+      /* Everything else is the chain: it compresses as the shock passes. */
+      const g = Math.min(down + up, 1);
+      o.dy = (down - up) * c.nudge;
+      o.sy = 1 - c.squeeze * g;
+      o.sx = 1 + c.squeeze * 0.55 * g;
+      return o;
+    }
+  },
+
+  /* Boil: every dot drifts on its own slow loop and never rests. Nothing
+     announces itself - the mark just refuses to look frozen, which is what a
+     long wait needs. */
+  boil: {
+    cycle: c => c.boilMs,
+    at(key, tm, c) {
+      const o = rest(), u = tm / c.boilMs;
+      /* Two harmonics at whole multiples of the cycle: irregular to watch,
+         exactly periodic to loop. */
+      const amp = c.boilAmp * (key === "core" ? 0.5 : 0.7 + 0.6 * hash01(key + "a"));
+      const px = hash01(key + "x"), py = hash01(key + "y"), ps = hash01(key + "s");
+      o.dx = amp * (0.62 * Math.sin(TAU * (u + px)) + 0.38 * Math.sin(TAU * (2 * u + px * 1.7)));
+      o.dy = amp * (0.62 * Math.sin(TAU * (u + py)) + 0.38 * Math.sin(TAU * (3 * u + py * 2.3)));
+      o.sx = o.sy = 1 + c.boilScale * Math.sin(TAU * (2 * u + ps));
+      return o;
+    }
+  },
+
+  /* Escapement: the ring ticks round a seat at a time. The three ovals swing
+     120 degrees together, the three circles follow a beat later, and each
+     lands with the overshoot of a mechanism engaging. Both triads map onto
+     themselves, so the mark is never wrong between ticks. */
+  escapement: {
+    cycle: c => c.escSteps * (c.tickGap + c.tickMs + c.escHold),
+    marks: c => {
+      const step = c.tickGap + c.tickMs + c.escHold, out = [];
+      for (let i = 0; i < c.escSteps; i++) {
+        out.push(i * step, i * step + c.tickGap,
+                 i * step + c.tickMs, i * step + c.tickGap + c.tickMs);
+      }
+      return out;
+    },
+    at(key, tm, c) {
+      const o = rest(), stepDur = c.tickGap + c.tickMs + c.escHold;
+      const step = Math.min(Math.floor(tm / stepDur), c.escSteps - 1);
+      const inStep = tm - step * stepDur;
+      if (key === "core") {
+        const g = halfSine(inStep, c.coreDipMs) + halfSine(inStep - c.tickGap, c.coreDipMs);
+        o.sx = o.sy = 1 - c.coreDip * Math.min(g, 1);
+        return o;
+      }
+      const late = SHAPE[key] === "oval" ? 0 : c.tickGap;
+      const u = clamp((inStep - late) / c.tickMs, 0, 1);
+      const e = u <= 0 ? 0 : u >= 1 ? 1 : easeOutBack(u, backTension(c.escOver));
+      const swing = Math.sin(Math.PI * u);
+      const [dx, dy] = arcAt(key, step, e, true, c.arcLift * swing);
+      o.dx = dx; o.dy = dy;
+      o.rot = 120 * (step + e);
+      o.sx = o.sy = 1 + c.travelPop * swing;
+      return o;
+    }
+  },
+
+  /* Jelly: the mark is tapped from one side and wobbles. Each dot answers on
+     a damped spring, lagging by how far down the blow it sits, and stretches
+     along the direction it is travelling. Pure follow-through. */
+  jelly: {
+    squash: true,
+    cycle: c => c.jellyMs + c.bumpRest,
+    marks: c => [c.jellyMs],
+    at(key, tm, c) {
+      const o = rest();
+      const a = c.tapDeg * RAD, ux = Math.cos(a), uy = Math.sin(a);
+      const t = tm - axisPos(c.tapDeg)[key] * c.lagMs;
+      const wob = s => {
+        if (s <= 0 || s >= c.jellyMs) return 0;
+        return Math.exp(-Math.LN2 * s / c.jellyHalf) * Math.sin(TAU * s / c.jellyPeriod)
+             * (1 - Math.pow(s / c.jellyMs, 4));
+      };
+      const amp = c.jellyAmp * (key === "core" ? 0.45 : 1);
+      const w = wob(t);
+      o.dx = ux * amp * w;
+      o.dy = uy * amp * w;
+      /* Stretch with speed, along the line of travel: a rotate/scale/unrotate
+         sandwich, so the squash follows the tap rather than the axes. */
+      const v = (wob(t + 8) - wob(t - 8)) / 16 / (TAU / c.jellyPeriod);
+      /* The blow is a jump in speed, so the stretch is a jump too. Eased over
+         the first frames, or the dot nearest the tap opens the loop already
+         stretched and the restart shows. */
+      const s = c.jellySquash * Math.min(Math.abs(v), 1) * smoother(t / 70);
+      o.ang = c.tapDeg;
+      o.sx = 1 + s;
+      o.sy = 1 - s * 0.65;
+      return o;
+    }
+  },
+
+  /* Swap: the two triads trade seats in opposite directions at once, the
+     ovals round the outside and the circles cutting the inside, so the six
+     dots weave through each other and land where the mark needs them.
+     (A straight swap of opposite dots would put a circle on an oval seat -
+     the mark's only rotational symmetry is 120 degrees, not 180.) */
+  swap: {
+    cycle: c => c.swapSteps * (c.swapMs + c.swapHold),
+    marks: c => {
+      const step = c.swapMs + c.swapHold, out = [];
+      for (let i = 0; i < c.swapSteps; i++) out.push(i * step, i * step + c.swapMs);
+      return out;
+    },
+    at(key, tm, c) {
+      const o = rest(), stepDur = c.swapMs + c.swapHold;
+      const step = Math.min(Math.floor(tm / stepDur), c.swapSteps - 1);
+      const inStep = tm - step * stepDur;
+      const u = clamp(inStep / c.swapMs, 0, 1);
+      if (key === "core") {
+        o.sx = o.sy = 1 - c.coreDip * halfSine(inStep - c.swapMs * 0.25, c.swapMs * 0.5);
+        return o;
+      }
+      const cw = SHAPE[key] === "oval";
+      const e = u <= 0 ? 0 : u >= 1 ? 1 : easeOutBack(u, backTension(c.swapOver));
+      const lane = (cw ? 1 : -1) * c.swapBow * Math.sin(Math.PI * u);
+      const [dx, dy] = arcAt(key, step, e, cw, lane);
+      o.dx = dx; o.dy = dy;
+      o.rot = (cw ? 120 : -120) * (step + e);
+      return o;
+    }
+  },
+
+  /* Equalizer: the dots bob like level meters, phase set by how far right
+     they sit, so the rise travels across the mark. Stretched at speed and
+     squashed at the turns, which is what gives it weight. */
+  equalizer: {
+    cycle: c => c.eqMs,
+    at(key, tm, c) {
+      const o = rest();
+      const th = TAU * (c.eqCycles * tm / c.eqMs + XPOS[key] * c.eqSpread);
+      o.dy = -c.eqAmp * (key === "core" ? 0.55 : 1) * Math.sin(th);
+      /* +1 at full speed, -1 at the top and bottom of the bob. */
+      const k = Math.abs(Math.cos(th)) * 2 - 1;
+      o.sy = 1 + c.eqStretch * k;
+      o.sx = 1 - c.eqStretch * 0.55 * k;
+      return o;
+    }
+  },
+
+  /* Twinkle: the dots dim and shrink one or two at a time, in an order that
+     never lights two neighbours in a row, so it reads as scattered rather
+     than as a wave. The pulse family's gesture, fired at random-looking
+     points instead of down a line. */
+  twinkle: {
+    op: true,
+    cycle: c => evenly(TWINKLE.length, c.twinkleGap) + c.bumpRest,
+    at(key, tm, c) {
+      const o = rest();
+      const cyc = evenly(TWINKLE.length, c.twinkleGap) + c.bumpRest;
+      const t = wrapDelta(tm - TWINKLE.indexOf(key) * c.twinkleGap, cyc);
+      if (t >= c.twinkleMs) return o;
+      /* Down fast, back slowly: a dot catching the light, not a blink. */
+      const a = t / c.twinkleMs;
+      const g = a < 0.35 ? easeOutP(a / 0.35, 2) : 1 - smoother((a - 0.35) / 0.65);
+      const v = RADIAL[key];
+      o.dx = v[0] * c.twinkleLift * g;
+      o.dy = v[1] * c.twinkleLift * g;
+      o.sx = o.sy = 1 - (1 - c.twinkleDip) * g;
+      o.op = 1 - c.twinkleDim * g;
+      return o;
+    }
+  },
+
+  /* Heartbeat: two thumps and a long rest. The core leads each one and the
+     ring answers, so the mark swells from the middle out. Calm, and the
+     cadence is one everybody already knows. */
+  heartbeat: {
+    cycle: c => c.beat2 + c.beatMs + c.beatOut + c.bumpRest,
+    marks: c => [c.beatMs, c.beat2, c.beat2 + c.beatMs],
+    at(key, tm, c) {
+      const o = rest();
+      const thump = t => t < 0 ? 0
+        : t < c.beatMs ? easeOutP(t / c.beatMs, 2)
+        : t < c.beatMs + c.beatOut ? 1 - smoother((t - c.beatMs) / c.beatOut)
+        : 0;
+      const t = tm - (key === "core" ? 0 : c.coreLead);
+      const g = thump(t) + c.beat2Amt * thump(t - c.beat2);
+      if (key === "core") {
+        o.sx = o.sy = 1 + c.beatScale * 1.6 * g;
+        return o;
+      }
+      const v = RADIAL[key];
+      o.dx = v[0] * c.beatPush * g;
+      o.dy = v[1] * c.beatPush * g;
+      o.sx = o.sy = 1 + c.beatScale * g;
+      return o;
+    }
+  }
+};
+
+const BUMP_PRESETS = {
+  scatter:    { mode:"bump", look:"scatter", spread:3.2, vary:0.5, spin:34,
+                burstMs:240, hangMs:380, homeMs:620, bumpRest:520,
+                snapOver:0.06, shrink:0.12, bumpFade:0.22, thump:0.14, thumpMs:220 },
+  shockwave:  { mode:"bump", look:"shockwave", ringPush:2.9, waveMs:280, springMs:560,
+                coreLead:150, waveStagger:90, sinkAmt:0.30, corePop:0.14,
+                shrink:0.10, bumpFade:0.16, bumpRest:640 },
+  cradle:     { mode:"bump", look:"cradle", swing:3.6, swingMs:720, travelMs:150,
+                thumpMs:210, squeeze:0.15, stretch:0.10, nudge:0.30 },
+  boil:       { mode:"bump", look:"boil", boilAmp:0.44, boilScale:0.045, boilMs:4400 },
+  escapement: { mode:"bump", look:"escapement", escSteps:3, tickMs:300, tickGap:110,
+                escHold:380, escOver:0.10, arcLift:0.55, travelPop:0.05,
+                coreDip:0.09, coreDipMs:200 },
+  jelly:      { mode:"bump", look:"jelly", jellyAmp:2.6, jellyPeriod:470, jellyHalf:430,
+                lagMs:150, tapDeg:16, jellySquash:0.16, jellyMs:1500, bumpRest:560 },
+  swap:       { mode:"bump", look:"swap", swapSteps:3, swapMs:640, swapHold:360,
+                swapBow:1.5, swapOver:0.07, coreDip:0.08 },
+  equalizer:  { mode:"bump", look:"equalizer", eqAmp:1.6, eqMs:1800, eqCycles:2,
+                eqSpread:0.75, eqStretch:0.13 },
+  twinkle:    { mode:"bump", look:"twinkle", twinkleMs:540, twinkleGap:230,
+                twinkleDim:0.5, twinkleDip:0.74, twinkleLift:0.5, bumpRest:280 },
+  heartbeat:  { mode:"bump", look:"heartbeat", beatPush:1.7, beatMs:110, beatOut:280,
+                beat2:340, beat2Amt:0.7, coreLead:55, beatScale:0.09, bumpRest:740 }
+};
+
+/* Every knob a bump look takes, with the range a ?query override is held to:
+   [min, max, whole numbers only]. Names are shared where the meaning is - a
+   rest is a rest whichever look is having one. */
+const BUMP_RANGE = {
+  bumpRest:[0,4000,true], bumpFade:[0,0.9,false], shrink:[0,0.6,false],
+  thump:[0,0.6,false], thumpMs:[40,1200,true], coreLead:[0,1200,true],
+  coreDip:[0,0.5,false], coreDipMs:[40,900,true],
+  /* scatter */
+  spread:[0,8,false], vary:[0,1,false], spin:[0,90,false], burstMs:[60,3000,true],
+  hangMs:[0,3000,true], homeMs:[80,3000,true], snapOver:[0,0.3,false],
+  /* shockwave */
+  ringPush:[0,6,false], waveMs:[60,2000,true], springMs:[80,3000,true],
+  waveStagger:[0,800,true], sinkAmt:[0,0.7,false], corePop:[0,0.5,false],
+  /* cradle */
+  swing:[0,8,false], swingMs:[200,3000,true], travelMs:[0,1200,true],
+  squeeze:[0,0.5,false], stretch:[0,0.5,false], nudge:[0,2,false],
+  /* boil */
+  boilAmp:[0,2,false], boilScale:[0,0.3,false], boilMs:[600,12000,true],
+  /* escapement */
+  escSteps:[1,6,true], tickMs:[80,2000,true], tickGap:[0,1200,true],
+  escHold:[0,2000,true], escOver:[0,0.4,false], arcLift:[-3,3,false],
+  travelPop:[0,0.4,false],
+  /* jelly */
+  jellyAmp:[0,6,false], jellyPeriod:[120,2000,true], jellyHalf:[60,3000,true],
+  lagMs:[0,800,true], tapDeg:[-360,360,false], jellySquash:[0,0.5,false],
+  jellyMs:[200,5000,true],
+  /* swap */
+  swapSteps:[1,6,true], swapMs:[120,3000,true], swapHold:[0,2000,true],
+  swapBow:[-4,4,false], swapOver:[0,0.4,false],
+  /* equalizer */
+  eqAmp:[0,5,false], eqMs:[400,8000,true], eqCycles:[1,6,true],
+  eqSpread:[0,3,false], eqStretch:[0,0.5,false],
+  /* twinkle */
+  twinkleMs:[80,3000,true], twinkleGap:[60,2000,true], twinkleDim:[0,0.95,false],
+  twinkleDip:[0.2,1,false], twinkleLift:[0,3,false],
+  /* heartbeat */
+  beatPush:[0,5,false], beatMs:[30,900,true], beatOut:[60,2000,true],
+  beat2:[80,2000,true], beat2Amt:[0,1.5,false], beatScale:[0,0.4,false]
+};
+
+/* One line on what each look is, so the index, the gallery and the site all
+   describe it the same way. */
+const BUMP_NOTES = {
+  scatter:    "The six outer dots burst apart on their own headings, hang there, then snap home past the mark and settle. The brand name, animated.",
+  shockwave:  "The core takes a hit and compresses; the ring is pushed out ahead of it and springs back. The two triads leave a beat apart.",
+  cradle:     "A Newton's cradle on the vertical axis: the top dot falls, the shock runs down through every dot in turn and throws the bottom one out.",
+  boil:       "Every dot drifts on its own slow loop and never rests. Nothing announces itself - the mark just refuses to look frozen.",
+  escapement: "The ring ticks round a seat at a time: the three ovals swing 120 degrees together, the three circles follow a beat later.",
+  jelly:      "The mark is tapped from one side and wobbles. Each dot answers on a damped spring, lagging by how far down the blow it sits.",
+  swap:       "The two triads trade seats in opposite directions at once, ovals round the outside and circles cutting the inside.",
+  equalizer:  "The dots bob like level meters, phase set by how far right they sit, so the rise travels across the mark.",
+  twinkle:    "Dots dim and shrink one or two at a time, in an order that never lights two neighbours in a row.",
+  heartbeat:  "Two thumps and a long rest. The core leads each one and the ring answers, so the mark swells from the middle out."
+};
+
+const lookOf = c => BUMP_LOOKS[c.look] || BUMP_LOOKS.scatter;
+const bumpCycle = c => Math.max(1, Math.round(lookOf(c).cycle(c)));
+
+/* How much error a dropped frame is allowed to introduce, per channel:
+   translate and scale in viewBox units, rotation in degrees. A unit is 1/25th
+   of the mark, so 0.02 is a fifteenth of a pixel on a 100px mark - well under
+   anything a screen can show, and it takes the CSS down by two thirds. */
+const BUMP_TOL = [0.02, 0.02, 0.004, 0.004, 0.35, 0.35, 0.008];
+const LOOKAHEAD = 64;
+
+/**
+ * Drop every sample that a straight line between its neighbours already
+ * describes. Curves that barely move collapse to two frames; an impact keeps
+ * every frame it needs.
+ */
+function thin(pts, tol) {
+  const out = [pts[0]];
+  let a = 0;
+  while (a < pts.length - 1) {
+    let best = a + 1;
+    for (let b = a + 2; b < pts.length && b - a <= LOOKAHEAD; b++) {
+      let ok = true;
+      for (let i = a + 1; i < b && ok; i++) {
+        const w = (pts[i].t - pts[a].t) / (pts[b].t - pts[a].t);
+        for (let ch = 0; ch < tol.length; ch++) {
+          const lin = pts[a].v[ch] + (pts[b].v[ch] - pts[a].v[ch]) * w;
+          if (Math.abs(pts[i].v[ch] - lin) > tol[ch]) { ok = false; break; }
+        }
+      }
+      if (!ok) break;
+      best = b;
+    }
+    out.push(pts[best]);
+    a = best;
+  }
+  return out;
+}
+
+/** The times to sample: an even grid, plus the instants the look calls out. */
+function bumpSampleTimes(c) {
+  const cycle = bumpCycle(c), look = lookOf(c);
+  const n = clamp(Math.round(cycle / 14), 48, 240);
+  const times = [];
+  for (let i = 0; i <= n; i++) times.push((i / n) * cycle);
+  if (look.marks) for (const m of look.marks(c)) {
+    if (m > 0 && m < cycle) times.push(m, Math.min(m + 1, cycle));
+  }
+  times.sort((x, y) => x - y);
+  const out = [];
+  for (const t of times) if (!out.length || t - out[out.length - 1] > 0.4) out.push(t);
+  return out;
+}
+
+/**
+ * One transform list per look, the same in every frame of it, so CSS
+ * interpolates component by component. A look that squashes along a line
+ * rather than along the axes gets the rotate/scale/unrotate sandwich; the
+ * rest are spared the two extra rotations on every frame.
+ */
+function bumpFrame(v, look) {
+  const [dx, dy, sx, sy, rot, ang, o] = v;
+  return `transform: translate(${dx.toFixed(4)}px, ${dy.toFixed(4)}px)`
+    + ` rotate(${(rot + ang).toFixed(3)}deg) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`
+    + (look.squash ? ` rotate(${(-ang).toFixed(3)}deg)` : "")
+    + (look.op ? `; opacity: ${o.toFixed(3)}` : "");
+}
+
+function bumpKeyframes(c, suffix = "") {
+  const look = lookOf(c), cycle = bumpCycle(c), times = bumpSampleTimes(c);
+  return DOTS.map(d => {
+    const pts = times.map(tm => {
+      const s = look.at(d.key, tm, c) || {};
+      return { t: tm / cycle,
+               v: [s.dx || 0, s.dy || 0, s.sx == null ? 1 : s.sx, s.sy == null ? 1 : s.sy,
+                   s.rot || 0, s.ang || 0, s.op == null ? 1 : s.op] };
+    });
+    const rows = thin(pts, BUMP_TOL)
+      .map(p => `  ${(p.t * 100).toFixed(3)}% { ${bumpFrame(p.v, look)} }`);
+    return `@keyframes bump_${d.key}${suffix} {\n${rows.join("\n")}\n}`;
+  }).join("\n\n");
+}
+
+/**
+ * How far outside its own silhouette a look throws the mark, in viewBox units.
+ * Distance from home is the wrong measure: a dot swinging round to the next
+ * seat travels most of the mark's width and never leaves its outline.
+ */
+function bumpReach(c) {
+  const look = lookOf(c), cycle = bumpCycle(c);
+  let rest = 0, far = 0;
+  for (const k of Object.keys(CENTERS)) rest = Math.max(rest, RADIUS[k]);
+  for (const d of DOTS) {
+    for (let i = 0; i <= 90; i++) {
+      const s = look.at(d.key, (i / 90) * cycle, c) || {};
+      far = Math.max(far, Math.hypot(CENTERS[d.key][0] + (s.dx || 0) - CORE[0],
+                                     CENTERS[d.key][1] + (s.dy || 0) - CORE[1]));
+    }
+  }
+  return Math.max(0, far - rest);
+}
+
 function keyframes(c, name = "scatterPulse", key = null) {
   const t = timing(c);
   const cycle = t.cycle;
@@ -1147,10 +1733,13 @@ function markSvg(c, className = "scatter-mark") {
 function markWidthCss(c) {
   if (c.trail) return "clamp(58px, 6.6vw, 104px)";      /* rolls furthest of the lot */
   if (c.mode === "dash") return "clamp(76px, 8.8vw, 140px)";
+  /* a look that throws its dots wide needs the room drawn a little smaller */
+  if (c.mode === "bump" && bumpReach(c) > 2.4) return "clamp(92px, 10.4vw, 164px)";
   return "clamp(100px, 11.4vw, 180px)";
 }
 
 function cycleOf(c) {
+  if (c.mode === "bump") return bumpCycle(c);
   if (c.mode === "dash") return dashPhases(c).cycle;
   if (/^(roll|smear|drop)$/.test(c.mode)) return rollPhases(c).cycle;
   if (c.mode === "cube") return cubePhases(c).cycle;
@@ -1162,6 +1751,18 @@ function cycleOf(c) {
 function animCss(c, markSel, dotSel, suffix = "", scope = "") {
   const cycle = cycleOf(c);
   const S = scope ? scope + " " : "";
+  if (c.mode === "bump") {
+    /* the mark holds still; every dot runs the same clock and carries its own
+       timing in its own keyframes */
+    const rules = [
+      `${S}${markSel} { animation: none; transform: none }`,
+      `${S}${dotSel} { animation-duration: ${cycle}ms; animation-delay: 0ms;`
+        + ` animation-timing-function: linear; animation-iteration-count: infinite;`
+        + ` animation-fill-mode: both }`,
+      ...DOTS.map(d => `${S}${dotSel}[data-key="${d.key}"] { animation-name: bump_${d.key}${suffix} }`)
+    ];
+    return rules.join("\n") + "\n\n" + bumpKeyframes(c, suffix);
+  }
   if (c.mode === "roll") {
     /* the mark rolls as one piece: the dots hold formation */
     return [
@@ -1286,6 +1887,21 @@ ${animCss(c, "." + className, "." + className + " .dot")}`;
 
 /** Merge a preset with ?query overrides, keeping every value in range. */
 function resolveConfig(id, query = {}) {
+  const wantsBump = BUMP_PRESETS[id] || query.mode === "bump"
+                    || BUMP_PRESETS[query.preset] || BUMP_PRESETS[query.look];
+  if (wantsBump) {
+    /* A look only means anything with its own knobs, so ?look= picks the whole
+       preset rather than pointing a different look's numbers at it. Naming one
+       outright wins over the route's id, which may just be a session. */
+    const c = { ...(BUMP_PRESETS[query.look] || BUMP_PRESETS[id]
+                    || BUMP_PRESETS[query.preset] || BUMP_PRESETS.scatter) };
+    for (const [k, [lo, hi, round]] of Object.entries(BUMP_RANGE)) {
+      const n = parseFloat(query[k]);
+      if (Number.isFinite(n)) c[k] = round ? Math.round(clamp(n, lo, hi)) : clamp(n, lo, hi);
+    }
+    c.mode = "bump";
+    return c;
+  }
   const dashTable = { ...DASH_PRESETS, ...TRAIL_PRESETS };
   const wantsDash = dashTable[id] || query.mode === "dash" || dashTable[query.preset];
   if (wantsDash) {
@@ -1385,6 +2001,8 @@ function resolveConfig(id, query = {}) {
 }
 
 module.exports = { DOTS, CENTERS, RADIAL, RADIUS, PRESETS, ORBIT_PRESETS, CUBE_PRESETS,
+                   BUMP_PRESETS, BUMP_LOOKS, BUMP_NOTES, BUMP_RANGE, bumpCycle, bumpKeyframes, bumpReach,
+                   bumpSampleTimes, ANGLE, YPOS, XPOS, RPOS,
                    ROLL_PRESETS, SMEAR_PRESETS, DROP_PRESETS, DASH_PRESETS, ELLIPSE, TAIL_DEG,
                    dashPhases, dashProgress, dashRotation, dashShift, dashSpeedAt,
                    dashPeakSpeed, dashMorphAt, dashBackPeak, dashShapeAt, dashExtent,

@@ -1,5 +1,5 @@
 /**
- * The shortlist page: every look worth comparing, side by side.
+ * The contact sheet: every look, side by side, five across.
  *
  * Shared by the dev server (/gallery) and the static build (gallery.html) so the
  * two cannot drift. The only difference between them is where "Test on UI"
@@ -11,10 +11,14 @@ const esc = s => String(s).replace(/[&<>"']/g, ch =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
 /* The gallery: every look worth comparing, side by side, each with a way
-   through to the real loading screen. Grouped by mode, three across. */
+   through to the real loading screen. One flat grid, five across, so any two
+   can be compared without scrolling past a heading. The family each look
+   belongs to rides along on its own card instead. */
 const GALLERY = [
   { mode: "Pulse wave",
     ids: ["pulse", "snap", "ripple", "around", "bounce", "circuit", "spoke"] },
+  { mode: "Bump", ids: ["scatter", "shockwave", "cradle", "jelly", "heartbeat"] },
+  { mode: "Bump", ids: ["boil", "escapement", "swap", "equalizer", "twinkle"] },
   { mode: "Orbit spin", ids: ["bloom", "snappy"] },
   { mode: "Corner roll", ids: ["thud"] },
   { mode: "Smear", ids: ["smear", "hard"] },
@@ -36,10 +40,14 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
     }
   }
 
-  const card = ({ id, config, cycle }) => {
+  const card = ({ id, group, config, cycle }) => {
+    const meta = `<div class="meta"><h3>${esc(id)}</h3>`
+      + `<span>${esc(group.mode)} &middot; ${cycle}ms</span></div>`;
     if (config.mode === "dash") {
       /* Travel is a percentage of the mark's own width, so the band that holds
-         it is sized in mark widths too and the two can never drift apart. */
+         it is sized in mark widths too and the two can never drift apart. The
+         cell is only two columns wide, so here the mark is sized off the band
+         rather than the other way round. */
       const e = anim.dashExtent(config);
       return `
       <article class="cell wide" id="c-${id}">
@@ -49,66 +57,70 @@ function galleryPage(testHref = id => `/test/${encodeURIComponent(id)}`) {
             ${anim.markSvg(config, "mark")}
           </div>
         </div>
-        <div class="meta"><h3>${esc(id)}</h3><span>${cycle}ms</span></div>
+        ${meta}
         <a class="btn" href="${esc(testHref(id))}">Test on UI</a>
       </article>`;
     }
     return `
       <article class="cell" id="c-${id}">
         <div class="stage">${anim.markSvg(config, "mark")}</div>
-        <div class="meta"><h3>${esc(id)}</h3><span>${cycle}ms</span></div>
+        ${meta}
         <a class="btn" href="${esc(testHref(id))}">Test on UI</a>
       </article>`;
   };
 
-  const sections = GALLERY.map(g => `
-      <h2 class="group">${esc(g.mode)}</h2>
-      ${g.ids.map(id => card(cells.find(x => x.id === id))).join("\n")}`).join("\n");
+  const sections = cells.map(card).join("\n");
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Scatter mark &middot; the shortlist</title>
+<title>Scatter mark &middot; every look</title>
 <style>
   *,*::before,*::after{box-sizing:border-box}
   body{margin:0;padding:56px 28px 80px;background:#0b0d0f;color:#e8ebef;
        font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-  .wrap{max-width:940px;margin:0 auto;--mw:96px}
+  .wrap{max-width:1340px;margin:0 auto;--mw:96px}
   h1{margin:0 0 30px;font-size:30px;letter-spacing:-.02em}
 
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:start}
-  @media (max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}
-  @media (max-width:540px){.grid{grid-template-columns:1fr}}
+  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+  @media (max-width:1180px){.grid{grid-template-columns:repeat(4,1fr)}}
+  @media (max-width:940px){.grid{grid-template-columns:repeat(3,1fr)}}
+  @media (max-width:700px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:460px){.grid{grid-template-columns:1fr}
+                           .cell.wide{grid-column:span 1}}
 
-  .group{grid-column:1/-1;margin:22px 0 0;font-size:11px;letter-spacing:.14em;
-         text-transform:uppercase;color:#7c8794;font-weight:500;
-         display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-  .group:first-of-type{margin-top:0}
-
-  .cell{border:1px solid #262e36;border-radius:14px;background:#12171c;overflow:hidden}
-  .stage{aspect-ratio:4/3;display:grid;place-items:center;
-         background:radial-gradient(120% 90% at 50% 40%,#191f26 0%,#0f1419 100%)}
-  .cell.wide{grid-column:1/-1}
-  .band-stage{aspect-ratio:auto;min-height:210px;padding:20px}
-  .band{position:relative;width:calc(var(--span) * var(--mw));
+  /* Black ground, border kept: the same background the mark gets on the real
+     loading screen, so nothing here flatters it. */
+  .cell{border:1px solid #262e36;border-radius:14px;background:#000;
+        overflow:hidden;display:flex;flex-direction:column}
+  .stage{aspect-ratio:4/3;flex:none;display:grid;place-items:center;background:#000}
+  .cell.wide{grid-column:span 2}
+  .band-stage{aspect-ratio:auto;min-height:188px;padding:16px}
+  .band{position:relative;width:100%;
         display:flex;justify-content:flex-start;padding:16px 0;
         outline:1px dashed rgba(229,160,64,.3);border-radius:12px}
-  .band > *{margin-left:calc(var(--lead) * var(--mw))}
+  .band .mark{width:calc(100% / var(--span))}
+  .band > *{margin-left:calc(var(--lead) / var(--span) * 100%)}
   .band::after{content:attr(data-note);position:absolute;top:-7px;right:12px;
-               padding:0 7px;background:#141a20;font-size:10px;letter-spacing:.1em;
+               padding:0 7px;background:#000;font-size:10px;letter-spacing:.1em;
                text-transform:uppercase;color:#a5762f}
 
+  /* The gap below the title lives here, not on the button: the button's
+     margin-top is auto so it can hang off the bottom of the cell, and auto
+     wins over any top margin it might otherwise carry. */
   .meta{display:flex;justify-content:space-between;align-items:baseline;
-        padding:12px 14px 0}
+        padding:13px 14px 20px}
+  .meta{gap:8px}
   .meta h3{margin:0;font-size:14px;text-transform:capitalize;color:#e5a040}
-  .meta span{font-size:11px;color:#7c8794;font-variant-numeric:tabular-nums}
-  .btn{display:block;margin:10px 14px 14px;padding:9px 12px;border-radius:8px;
+  .meta span{font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+             color:#6b7581;text-align:right;flex:none}
+  .btn{display:block;margin:0 14px 14px;margin-top:auto;padding:9px 12px;border-radius:8px;
        border:1px solid #2a323b;text-align:center;text-decoration:none;
        font-size:12px;letter-spacing:.06em;text-transform:uppercase;
-       color:#c3ccd6;background:#171d24;transition:border-color .15s,color .15s,background .15s}
-  .btn:hover{border-color:#e5a040;color:#e5a040;background:#1c232b}
+       color:#c3ccd6;background:#0e1216;transition:border-color .15s,color .15s,background .15s}
+  .btn:hover{border-color:#e5a040;color:#e5a040;background:#161c22}
 
   /* Shared mark styling; the per-cell rules below drive the motion. */
   .mark{width:var(--mw);height:auto;display:block;overflow:visible;color:#fff;
@@ -128,12 +140,12 @@ ${css.join("\n\n")}
 </head>
 <body>
 <div class="wrap">
-  <h1>Scatter mark &middot; the shortlist</h1>
+  <h1>Scatter mark &middot; every look</h1>
   <div class="grid">${sections}
   </div>
   <div class="more">
-    All the variants live on the <a href="/">index</a>; tune new ones in the
-    <a href="/workbench">workbench</a>.
+    Every look on this page has a card on the <a href="/">index</a> with its
+    numbers; tune new ones in the <a href="/workbench">workbench</a>.
   </div>
 </div>
 </body>

@@ -19,6 +19,14 @@ see them in context.
 - **Dash** — the teardrop, but the mark travels: it rolls off to the right at
   speed like a thrown dice, hangs there a beat, then rolls slowly back to where
   it started. The only look that needs a box wider than the mark.
+- **Bump** — ten looks that move the dots rather than only scaling them in
+  place. `scatter` bursts them apart and snaps them home; `shockwave` pushes
+  the ring out ahead of a compressing core; `cradle` runs a Newton's cradle
+  down the vertical axis; `boil` never stops drifting; `escapement` ticks the
+  ring round a seat at a time; `jelly` wobbles from a tap; `swap` weaves the
+  two triads through each other in opposite directions; `equalizer` bobs them
+  like level meters; `twinkle` dims them in a scattered order; `heartbeat`
+  gives two thumps and a long rest.
 - **Track** — the dash on a smaller mark, rolled further (600°, 5.24 widths),
   with a 4px line tucked into the bottom of it that stretches out behind as it
   rolls away and shrinks away as it slows. Outward leg only.
@@ -39,7 +47,7 @@ No dependencies — Node's stdlib only.
 | `/` | Index of the variants |
 | `/test/:id` | Loading screen: app screenshot, 50% black scrim, mark centred on top |
 | `/test` | Same, default preset |
-| `/gallery` | The shortlist: fourteen looks side by side, each with a way through to `/test` |
+| `/gallery` | Every look side by side, five across, each with a way through to `/test` |
 | `/workbench` | The tuning workbench |
 | `/public/*` | Static assets |
 

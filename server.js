@@ -11,7 +11,7 @@
  *                      - if :id names a preset (pulse|breathe|snap|ripple) it selects it
  *                      - otherwise :id is treated as an opaque id (game, session, round)
  *                        and the preset comes from ?preset=
- *   /gallery           the shortlist: eight looks side by side
+ *   /gallery           the contact sheet: every look side by side
  *   /workbench         the tuning workbench
  *   /public/*          static assets
  *
@@ -39,9 +39,9 @@ const esc = s => String(s).replace(/[&<>"']/g, ch =>
 
 /* ---------------------------------------------------------------- pages */
 
-const ALL_PRESETS = { ...anim.PRESETS, ...anim.ORBIT_PRESETS, ...anim.CUBE_PRESETS,
-                      ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS, ...anim.DROP_PRESETS,
-                      ...anim.DASH_PRESETS, ...anim.TRAIL_PRESETS };
+const ALL_PRESETS = { ...anim.PRESETS, ...anim.BUMP_PRESETS, ...anim.ORBIT_PRESETS,
+                      ...anim.CUBE_PRESETS, ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS,
+                      ...anim.DROP_PRESETS, ...anim.DASH_PRESETS, ...anim.TRAIL_PRESETS };
 
 function loadingPage({ id, presetId, config, debug }) {
   const cycle = anim.cycleOf(config);
@@ -49,7 +49,21 @@ function loadingPage({ id, presetId, config, debug }) {
 
   /* Debug rows differ per mode. */
   let rows;
-  if (config.mode === "dash") {
+  if (config.mode === "bump") {
+    /* Every look takes its own knobs, so the panel lists whatever this one
+       actually has rather than a fixed set it might not use. */
+    const ms = new Set(["burstMs", "hangMs", "homeMs", "bumpRest", "thumpMs", "waveMs",
+                        "springMs", "coreLead", "waveStagger", "swingMs", "travelMs",
+                        "boilMs", "tickMs", "tickGap", "escHold", "coreDipMs",
+                        "jellyPeriod", "jellyHalf", "jellyMs", "lagMs", "swapMs",
+                        "swapHold", "eqMs", "twinkleMs", "twinkleGap", "beatMs",
+                        "beatOut", "beat2"]);
+    rows = [["look", esc(config.look)],
+            ["reaches", `${anim.bumpReach(config).toFixed(2)} units past the mark`]]
+      .concat(Object.keys(config)
+        .filter(k => k !== "mode" && k !== "look" && Number.isFinite(config[k]))
+        .map(k => [k, ms.has(k) ? `${config[k]}ms` : `${config[k]}`]));
+  } else if (config.mode === "dash") {
     const e = anim.dashExtent(config);
     const d = anim.dashPhases(config);
     rows = [["travel", `${config.dashX.toFixed(2)} widths`],
@@ -225,7 +239,10 @@ function loadingPage({ id, presetId, config, debug }) {
 function indexPage() {
   const card = ([id, c]) => {
     const cycle = anim.cycleOf(c);
-    const rows = c.mode === "dash"
+    const rows = c.mode === "bump"
+      ? [["cycle", `${cycle}ms`], ["look", c.look],
+         ["reaches", `${anim.bumpReach(c).toFixed(2)} units`]]
+      : c.mode === "dash"
       ? [["cycle", `${cycle}ms`], ["travel", `${c.dashX.toFixed(2)} widths`],
          c.trail ? ["trail", `${c.trail}px &middot; ${c.trailLag}ms`]
                  : ["turn", `${anim.goDeg(c)}&deg;`],
@@ -250,6 +267,9 @@ function indexPage() {
     </a>`;
   };
   const cards = Object.entries(anim.PRESETS).map(card).join("\n");
+  const bumpCards = Object.entries(anim.BUMP_PRESETS).map(([id, c]) =>
+    card([id, c]).replace("</dl>",
+      `</dl><p class="blurb">${anim.BUMP_NOTES[id] || ""}</p>`)).join("\n");
   const orbitCards = Object.entries(anim.ORBIT_PRESETS).map(card).join("\n");
   const cubeCards = Object.entries(anim.CUBE_PRESETS).map(card).join("\n");
   const rollCards = Object.entries(anim.ROLL_PRESETS).map(card).join("\n");
@@ -285,6 +305,9 @@ function indexPage() {
   dl div{display:flex;justify-content:space-between;font-size:12px}
   dt{color:#7c8794}
   dd{margin:0;font-variant-numeric:tabular-nums}
+  .grid.wide{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+  .blurb{margin:12px 0 0;padding-top:11px;border-top:1px solid #1e252c;
+         font-size:12px;line-height:1.55;color:#8b96a3}
   .more{margin-top:34px;padding-top:22px;border-top:1px solid #1e252c;color:#98a2ae;
         font-size:14px;line-height:1.8}
   .more a{color:#e5a040}
@@ -298,6 +321,8 @@ function indexPage() {
      without leaving the page.</p>
   <h3>Pulse wave</h3>
   <div class="grid">${cards}</div>
+  <h3>Bump &mdash; the dots move, rather than only scaling</h3>
+  <div class="grid wide">${bumpCards}</div>
   <h3>Orbit spin</h3>
   <div class="grid">${orbitCards}</div>
   <h3>Cube tumble</h3>
@@ -315,7 +340,7 @@ function indexPage() {
   <div class="more">
     Any other id works too &mdash; <code>/test/round-8817</code> renders the default preset for an
     opaque id, and <code>?preset=snap</code> picks a different one.<br>
-    See the <a href="/gallery">shortlist</a> with all eight side by side, tune live in the
+    See <a href="/gallery">every look</a> side by side, tune live in the
     <a href="/workbench">workbench</a>, or override inline:
     <code>/test/pulse?min=0.9&amp;travel=900&amp;debug=1</code>
   </div>
@@ -373,6 +398,6 @@ http.createServer((req, res) => {
   console.log(`  /                  variants`);
   console.log(`  /test/pulse        loading screen`);
   console.log(`  /test/round-8817   opaque id, default preset`);
-  console.log(`  /gallery           the shortlist`);
+  console.log(`  /gallery           every look, side by side`);
   console.log(`  /workbench         tuning workbench`);
 });

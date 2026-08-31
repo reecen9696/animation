@@ -1,5 +1,5 @@
 /**
- * Builds gallery.html: the shortlist as one static page for the published site.
+ * Builds gallery.html: the contact sheet as one static page for the published site.
  *
  * Same module the dev server renders /gallery from, so the two cannot drift.
  * "Test on UI" points at the standalone loading screen instead of the route.
