@@ -6,6 +6,8 @@
  */
 const fs = require("fs");
 const anim = require("./anim.js");
+/* stamp shared with the links so a fresh index never opens a stale loading screen */
+const V = Date.now().toString(36);
 const custom = require("./custom.js");
 
 const GROUPS = [
@@ -53,7 +55,7 @@ const customSection = CUSTOM_GROUPS.map(g => `
       <div class="chips">
         ${g.ids.map(id => {
           const m = custom.meta(id);
-          return `<a class="chip" href="loading-screen.html#${id}"><b>${id}</b>`
+          return `<a class="chip" href="loading-screen.html?v=${V}#${id}"><b>${id}</b>`
                + `<span>${m.cycle}ms &middot; lottie</span></a>`;
         }).join("\n        ")}
       </div>
@@ -65,7 +67,7 @@ const groups = GROUPS.map(g => `
       <p class="blurb">${g.blurb}</p>
       <div class="chips">
         ${Object.keys(g.set).map(id =>
-          `<a class="chip" href="loading-screen.html#${id}"><b>${id}</b><span>${summarise(g.set[id])}</span></a>`
+          `<a class="chip" href="loading-screen.html?v=${V}#${id}"><b>${id}</b><span>${summarise(g.set[id])}</span></a>`
         ).join("\n        ")}
       </div>
     </section>`).join("\n");
@@ -143,7 +145,7 @@ const html = `<!doctype html>
      size it ships at, with nothing behind it. Every variant below is a direct link.</p>
 
   <div class="tools">
-    <a class="tool" href="loading-screen.html">
+    <a class="tool" href="loading-screen.html?v=${V}">
       <h3>Loading screen &rarr;</h3>
       <p>All ${GROUPS.reduce((n, g) => n + Object.keys(g.set).length, 0) + custom.ids().length} variants on black, with a switcher. Press 1&ndash;9 to compare.</p>
     </a>
