@@ -1616,6 +1616,143 @@ const BUMP_LOOKS = {
     }
   },
 
+  /* Glide: the scatter gesture with the snap taken out. The ring drifts out
+     on a smootherstep - zero velocity and zero acceleration at both ends -
+     hangs, and comes home the same way. Nothing bounces, ever. */
+  glide: {
+    cycle: c => c.outMs + c.hangMs + c.inMs + c.glideLag + c.bumpRest,
+    marks: c => [c.outMs, c.outMs + c.hangMs, c.outMs + c.hangMs + c.inMs + c.glideLag],
+    at(key, tm, c) {
+      const o = rest();
+      /* the near triad leads, the far follows: depth without disorder */
+      const t = tm - (key === "core" ? 0 : RPOS[key] * c.glideLag);
+      const outEnd = c.outMs, hangEnd = outEnd + c.hangMs, inEnd = hangEnd + c.inMs;
+      let a = 0;
+      if (t > 0 && t < outEnd) a = smoother(t / c.outMs);
+      else if (t >= outEnd && t < hangEnd) a = 1;
+      else if (t >= hangEnd && t < inEnd) a = 1 - smoother((t - hangEnd) / c.inMs);
+      if (key === "core") { o.sx = o.sy = 1 - c.coreEase * a; return o; }
+      const v = RADIAL[key];
+      o.dx = v[0] * c.glideDist * a;
+      o.dy = v[1] * c.glideDist * a;
+      o.sx = o.sy = 1 - c.shrink * a;
+      return o;
+    }
+  },
+
+  /* Fathom: the ring recedes into depth and comes back, on one unbroken
+     cosine. Distance does the storytelling: the further out a dot is, the
+     smaller and fainter it gets, like sinking through fog. The core holds
+     the surface. Seamless; never rests. */
+  fathom: {
+    op: true,
+    cycle: c => c.fathomMs,
+    at(key, tm, c) {
+      const o = rest();
+      const w = (1 - Math.cos(TAU * tm / c.fathomMs)) / 2;
+      if (key === "core") { o.sx = o.sy = 1 - 0.25 * c.fathomShrink * w; return o; }
+      const v = RADIAL[key];
+      o.dx = v[0] * c.fathomDist * w;
+      o.dy = v[1] * c.fathomDist * w;
+      o.sx = o.sy = 1 - c.fathomShrink * w;
+      o.op = 1 - c.fathomFade * w;
+      return o;
+    }
+  },
+
+  /* Servo: the ring extends in equal indexed steps - constant-velocity ramp,
+     hard stop, hold - parks at full reach, and steps back in. The core blinks
+     as each step completes, an LED acknowledging the move. Robotic on
+     purpose: no easing anywhere. */
+  servo: {
+    op: true,
+    cycle: c => 2 * c.servoSteps * (c.stepMs + c.stepHold) + c.servoPark + c.bumpRest,
+    marks: c => {
+      const span = c.stepMs + c.stepHold, outEnd = c.servoSteps * span;
+      const parkEnd = outEnd + c.servoPark, out = [];
+      for (let i = 0; i < c.servoSteps; i++) {
+        out.push(i * span, i * span + c.stepMs, parkEnd + i * span, parkEnd + i * span + c.stepMs);
+      }
+      out.push(outEnd, parkEnd, parkEnd + c.servoSteps * span);
+      return out;
+    },
+    at(key, tm, c) {
+      const o = rest();
+      const span = c.stepMs + c.stepHold, outEnd = c.servoSteps * span;
+      const parkEnd = outEnd + c.servoPark, inEnd = parkEnd + c.servoSteps * span;
+      let a = 0;
+      if (tm > 0 && tm < outEnd) {
+        const i = Math.floor(tm / span);
+        a = (i + Math.min((tm - i * span) / c.stepMs, 1)) / c.servoSteps;
+      } else if (tm >= outEnd && tm < parkEnd) a = 1;
+      else if (tm >= parkEnd && tm < inEnd) {
+        const t = tm - parkEnd, i = Math.floor(t / span);
+        a = 1 - (i + Math.min((t - i * span) / c.stepMs, 1)) / c.servoSteps;
+      }
+      if (key === "core") {
+        let g = 0;
+        for (let i = 0; i < c.servoSteps; i++) {
+          g = Math.max(g, impact(tm - (i * span + c.stepMs), 130),
+                          impact(tm - (parkEnd + i * span + c.stepMs), 130));
+        }
+        o.op = 1 - c.servoBlink * g;
+        return o;
+      }
+      const v = RADIAL[key];
+      o.dx = v[0] * c.servoDist * a;
+      o.dy = v[1] * c.servoDist * a;
+      return o;
+    }
+  },
+
+  /* Scan: a machine self-test. One dot at a time, in ring order, slides out
+     on a constant-velocity ramp, holds a beat, slides back; the core's slot
+     is a size check. Strict cadence, exact gaps, linear everything. */
+  scan: {
+    cycle: c => RING.length * (2 * c.scanMs + c.scanPeek + c.scanGap) + c.bumpRest,
+    marks: c => {
+      const slot = 2 * c.scanMs + c.scanPeek + c.scanGap, out = [];
+      for (let i = 0; i < RING.length; i++) {
+        out.push(i * slot, i * slot + c.scanMs,
+                 i * slot + c.scanMs + c.scanPeek, i * slot + 2 * c.scanMs + c.scanPeek);
+      }
+      return out;
+    },
+    at(key, tm, c) {
+      const o = rest();
+      const slot = 2 * c.scanMs + c.scanPeek + c.scanGap;
+      const t = tm - RING.indexOf(key) * slot;
+      let a = 0;
+      if (t > 0 && t < c.scanMs) a = t / c.scanMs;
+      else if (t >= c.scanMs && t < c.scanMs + c.scanPeek) a = 1;
+      else if (t >= c.scanMs + c.scanPeek && t < 2 * c.scanMs + c.scanPeek) {
+        a = 1 - (t - c.scanMs - c.scanPeek) / c.scanMs;
+      }
+      if (key === "core") { o.sx = o.sy = 1 + c.scanCoreUp * a; return o; }
+      const v = RADIAL[key];
+      o.dx = v[0] * c.scanDist * a;
+      o.dy = v[1] * c.scanDist * a;
+      return o;
+    }
+  },
+
+  /* Float: the whole mark rides one slow ellipse, each dot adding a gentle
+     personal sway on top, with the faintest shared breathe. Everything is a
+     whole-multiple sine, so it is seamless and can run forever. The smooth
+     end of the scale: nothing starts, nothing stops. */
+  float: {
+    cycle: c => c.floatMs,
+    at(key, tm, c) {
+      const o = rest();
+      const u = TAU * tm / c.floatMs;
+      const p = TAU * hash01(key + "f");
+      o.dx = c.floatR * Math.cos(u) + c.swayR * Math.cos(2 * u + p);
+      o.dy = c.floatR * 0.62 * Math.sin(u) + c.swayR * Math.sin(u + p);
+      o.sx = o.sy = 1 + c.floatBreathe * Math.sin(u + (key === "core" ? 0 : TAU * RPOS[key] * 0.15));
+      return o;
+    }
+  },
+
   /* Wave: the generalized pulse. Scale only - the dots stay seated - but the
      pulse's shape, direction and physics are all the config's to choose. */
   wave: {
@@ -1663,7 +1800,17 @@ const BUMP_PRESETS = {
   twinkle:    { mode:"bump", look:"twinkle", twinkleMs:540, twinkleGap:230,
                 twinkleDim:0.5, twinkleDip:0.74, twinkleLift:0.5, bumpRest:280 },
   heartbeat:  { mode:"bump", look:"heartbeat", beatPush:1.7, beatMs:110, beatOut:280,
-                beat2:340, beat2Amt:0.7, coreLead:55, beatScale:0.09, bumpRest:740 }
+                beat2:340, beat2Amt:0.7, coreLead:55, beatScale:0.09, bumpRest:740 },
+  glide:      { mode:"bump", look:"glide", glideDist:2.2, glideLag:150, outMs:950,
+                hangMs:350, inMs:1050, coreEase:0.10, shrink:0.08, bumpRest:480 },
+  fathom:     { mode:"bump", look:"fathom", fathomDist:1.7, fathomShrink:0.24,
+                fathomFade:0.60, fathomMs:3400 },
+  servo:      { mode:"bump", look:"servo", servoSteps:3, stepMs:130, stepHold:190,
+                servoDist:1.9, servoPark:560, servoBlink:0.38, bumpRest:620 },
+  scan:       { mode:"bump", look:"scan", scanDist:1.5, scanMs:150, scanPeek:210,
+                scanGap:110, scanCoreUp:0.15, bumpRest:420 },
+  float:      { mode:"bump", look:"float", floatR:0.85, swayR:0.35,
+                floatBreathe:0.035, floatMs:5400 }
 };
 
 /* Every knob a bump look takes, with the range a ?query override is held to:
@@ -1704,6 +1851,16 @@ const BUMP_RANGE = {
   /* heartbeat */
   beatPush:[0,5,false], beatMs:[30,900,true], beatOut:[60,2000,true],
   beat2:[80,2000,true], beat2Amt:[0,1.5,false], beatScale:[0,0.4,false],
+  /* glide / fathom / servo / scan / float */
+  glideDist:[0,6,false], glideLag:[0,800,true], outMs:[100,4000,true],
+  hangMs:[0,3000,true], inMs:[100,4000,true], coreEase:[0,0.5,false],
+  fathomDist:[0,5,false], fathomShrink:[0,0.7,false], fathomFade:[0,0.95,false],
+  fathomMs:[600,12000,true], servoSteps:[1,8,true], stepMs:[40,1000,true],
+  stepHold:[0,1500,true], servoDist:[0,6,false], servoPark:[0,3000,true],
+  servoBlink:[0,0.9,false], scanDist:[0,5,false], scanMs:[40,1000,true],
+  scanPeek:[0,1500,true], scanGap:[0,1500,true], scanCoreUp:[0,0.5,false],
+  floatR:[0,4,false], swayR:[0,3,false], floatBreathe:[0,0.2,false],
+  floatMs:[800,15000,true],
   /* wave */
   waveDepth:[0,0.7,false], grow:[0,1,true], pulseMs:[120,4000,true],
   travelMs:[0,4000,true], restMs:[0,4000,true], dipAt:[0.1,0.9,false],
@@ -1725,6 +1882,11 @@ const BUMP_NOTES = {
   equalizer:  "The dots bob like level meters, phase set by how far right they sit, so the rise travels across the mark.",
   twinkle:    "Dots dim and shrink one or two at a time, in an order that never lights two neighbours in a row.",
   heartbeat:  "Two thumps and a long rest. The core leads each one and the ring answers, so the mark swells from the middle out.",
+  glide:      "The scatter gesture with the snap taken out: the ring drifts out, hangs, and comes home. Nothing bounces, ever.",
+  fathom:     "The ring recedes into depth on one unbroken cosine - the further out a dot is, the smaller and fainter. The core holds the surface.",
+  servo:      "The ring extends in equal indexed steps with hard stops, parks, and steps back. The core blinks as each step completes.",
+  scan:       "A machine self-test: one dot at a time slides out, holds a beat, slides back. Strict cadence, linear everything.",
+  float:      "The whole mark rides one slow ellipse, each dot adding a gentle sway. Nothing starts, nothing stops.",
   swell:      "The pulse turned inside out: the wave grows the dots instead of shrinking them, settling with a soft dip past neutral.",
   drum:       "Ba-DUM: each dot beats twice as the wave passes, the second beat the stronger.",
   elastic:    "Down hard, home on a damped spring: each dot rings past its own size a few times before it stills.",

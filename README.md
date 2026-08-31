@@ -33,6 +33,12 @@ see them in context.
   two triads through each other in opposite directions; `equalizer` bobs them
   like level meters; `twinkle` dims them in a scattered order; `heartbeat`
   gives two thumps and a long rest.
+- **Bump II** — five studies in motion character. `glide` is the scatter
+  gesture with the snap taken out; `fathom` recedes into depth, dots smaller
+  and fainter the further out they are; `servo` extends in indexed steps with
+  hard stops and an LED blink per step; `scan` is a machine self-test, one dot
+  at a time on a strict cadence; `float` rides one slow ellipse and never
+  stops.
 - **Track** — the dash on a smaller mark, rolled further (600°, 5.24 widths),
   with a 4px line tucked into the bottom of it that stretches out behind as it
   rolls away and shrinks away as it slows. Outward leg only.

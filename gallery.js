@@ -22,6 +22,7 @@ const GALLERY = [
           "crossfire", "tide", "doppler", "echo"] },
   { mode: "Bump", ids: ["scatter", "shockwave", "cradle", "jelly", "heartbeat"] },
   { mode: "Bump", ids: ["boil", "escapement", "swap", "equalizer", "twinkle"] },
+  { mode: "Bump", ids: ["glide", "fathom", "servo", "scan", "float"] },
   { mode: "Orbit spin", ids: ["bloom", "snappy"] },
   { mode: "Corner roll", ids: ["thud"] },
   { mode: "Smear", ids: ["smear", "hard"] },
