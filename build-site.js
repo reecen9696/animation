@@ -9,6 +9,7 @@ const anim = require("./anim.js");
 
 const GROUPS = [
   { name: "Pulse",   blurb: "A wave crossing the mark on the top-left to bottom-right diagonal.", set: anim.PRESETS },
+  { name: "Pulse II",blurb: "New shapes, directions and physics for the pulse: grows, double-beats, springs, wind-ups, collisions, tides and echoes.", set: anim.WAVE_PRESETS },
   { name: "Bump",    blurb: "Ten looks that move the dots rather than only scaling them: bursts, impacts, wobbles and running idles.", set: anim.BUMP_PRESETS },
   { name: "Orbit",   blurb: "The outer dots bloom away from the core, the mark winds back and spins.", set: anim.ORBIT_PRESETS },
   { name: "Cube",    blurb: "A GameCube-style tumble: tuck in, roll end over end, snap open.", set: anim.CUBE_PRESETS },

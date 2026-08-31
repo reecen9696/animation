@@ -39,7 +39,7 @@ const esc = s => String(s).replace(/[&<>"']/g, ch =>
 
 /* ---------------------------------------------------------------- pages */
 
-const ALL_PRESETS = { ...anim.PRESETS, ...anim.BUMP_PRESETS, ...anim.ORBIT_PRESETS,
+const ALL_PRESETS = { ...anim.PRESETS, ...anim.WAVE_PRESETS, ...anim.BUMP_PRESETS, ...anim.ORBIT_PRESETS,
                       ...anim.CUBE_PRESETS, ...anim.ROLL_PRESETS, ...anim.SMEAR_PRESETS,
                       ...anim.DROP_PRESETS, ...anim.DASH_PRESETS, ...anim.TRAIL_PRESETS };
 
@@ -57,9 +57,10 @@ function loadingPage({ id, presetId, config, debug }) {
                         "boilMs", "tickMs", "tickGap", "escHold", "coreDipMs",
                         "jellyPeriod", "jellyHalf", "jellyMs", "lagMs", "swapMs",
                         "swapHold", "eqMs", "twinkleMs", "twinkleGap", "beatMs",
-                        "beatOut", "beat2"]);
-    rows = [["look", esc(config.look)],
-            ["reaches", `${anim.bumpReach(config).toFixed(2)} units past the mark`]]
+                        "beatOut", "beat2", "pulseMs", "travelMs", "restMs"]);
+    rows = [["look", esc(config.look)]]
+      .concat(config.look === "wave" ? []
+        : [["reaches", `${anim.bumpReach(config).toFixed(2)} units past the mark`]])
       .concat(Object.keys(config)
         .filter(k => k !== "mode" && k !== "look" && Number.isFinite(config[k]))
         .map(k => [k, ms.has(k) ? `${config[k]}ms` : `${config[k]}`]));
@@ -239,7 +240,11 @@ function loadingPage({ id, presetId, config, debug }) {
 function indexPage() {
   const card = ([id, c]) => {
     const cycle = anim.cycleOf(c);
-    const rows = c.mode === "bump"
+    const rows = c.look === "wave"
+      ? [["cycle", `${cycle}ms`], ["depth", `${Math.round(c.waveDepth * 100)}%`],
+         ["travel", `${c.travelMs}ms`],
+         ["dir", c.waveDir === "diag" ? "diagonal" : c.waveDir]]
+      : c.mode === "bump"
       ? [["cycle", `${cycle}ms`], ["look", c.look],
          ["reaches", `${anim.bumpReach(c).toFixed(2)} units`]]
       : c.mode === "dash"
@@ -267,6 +272,9 @@ function indexPage() {
     </a>`;
   };
   const cards = Object.entries(anim.PRESETS).map(card).join("\n");
+  const waveCards = Object.entries(anim.WAVE_PRESETS).map(([id, c]) =>
+    card([id, anim.resolveConfig(id, {})]).replace("</dl>",
+      `</dl><p class="blurb">${anim.BUMP_NOTES[id] || ""}</p>`)).join("\n");
   const bumpCards = Object.entries(anim.BUMP_PRESETS).map(([id, c]) =>
     card([id, c]).replace("</dl>",
       `</dl><p class="blurb">${anim.BUMP_NOTES[id] || ""}</p>`)).join("\n");
@@ -321,6 +329,8 @@ function indexPage() {
      without leaving the page.</p>
   <h3>Pulse wave</h3>
   <div class="grid">${cards}</div>
+  <h3>Pulse wave II &mdash; new shapes, directions and physics for the pulse</h3>
+  <div class="grid wide">${waveCards}</div>
   <h3>Bump &mdash; the dots move, rather than only scaling</h3>
   <div class="grid wide">${bumpCards}</div>
   <h3>Orbit spin</h3>

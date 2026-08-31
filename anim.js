@@ -1169,6 +1169,153 @@ function axisPos(deg) {
   return out;
 }
 
+/* ---------------------------------------------------------------- wave */
+
+/*
+ * The second pulse-wave family. The first varies when the dip travels; this
+ * one varies everything else about it: the shape of the pulse (a grow, a
+ * double-tap, a springy recovery, a wind-up), the direction it crosses the
+ * mark (down, out of the core, into it, two waves colliding, a tide), and
+ * its physics (speed and depth ramping across the travel, an echo pass).
+ *
+ * One engine: every dot gets a list of hits - when a wave reaches it, how
+ * long its pulse runs, how deep - and the profile is summed over them. A
+ * variant is a config, not new code.
+ */
+
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* Pulse profiles: u in (0,1) -> how far into the gesture, 1 = full depth.
+   Negative runs the other way - past neutral, an overshoot. */
+const WAVE_SHAPES = {
+  /* The classic: down, back up, optionally a touch past neutral. */
+  dip(u, c) {
+    const d = c.dipAt, over = c.overAmt;
+    if (u <= d) return smoother(u / d);
+    if (!over) return 1 - smoother((u - d) / (1 - d));
+    const back = d + (1 - d) * 0.6;
+    if (u <= back) return 1 - (1 + over) * smoother((u - d) / (back - d));
+    return -over * (1 - smoother((u - back) / (1 - back)));
+  },
+  /* Two beats in one window, the second the stronger: ba-DUM. */
+  double(u, c) {
+    const a = Math.sin(Math.PI * clamp(u / 0.52, 0, 1));
+    const b = Math.sin(Math.PI * clamp((u - 0.44) / 0.56, 0, 1));
+    return Math.max(0.68 * a, b);
+  },
+  /* Straight down, then home on a damped spring that rings past neutral. */
+  elastic(u, c) {
+    const a = 0.22;
+    if (u < a) return smoother(u / a);
+    const v = (u - a) / (1 - a);
+    return Math.cos(TAU * c.springs * v) * Math.exp(-c.damp * v) * (1 - Math.pow(v, 6));
+  },
+  /* Anticipation: a small grow first, then the dip lands harder for it. */
+  windup(u, c) {
+    const w = 0.24, d = 0.56;
+    if (u < w) return -c.windAmt * Math.sin(Math.PI * u / w);
+    if (u < d) return smoother((u - w) / (d - w));
+    const back = d + (1 - d) * 0.55;
+    if (u <= back) return 1 - 1.1 * smoother((u - d) / (back - d));
+    return -0.1 * (1 - smoother((u - back) / (1 - back)));
+  }
+};
+
+/* Where each dot sits in the wave for each direction, 0 first and 1 last. */
+function waveOffsetOf(key, c) {
+  switch (c.waveDir) {
+    case "down":    return axisPos(90)[key];
+    /* Radial legs squeeze the triads toward the far end, so the run out of
+       (or into) the core reads as core, beat, near triad, far triad. */
+    case "out":     return key === "core" ? 0 : 0.7 + 0.3 * RPOS[key];
+    case "in":      return key === "core" ? 1 : 0.3 * (1 - RPOS[key]);
+    case "tide":    return axisPos(0)[key];
+    default:        return offsets()[key];          /* the house diagonal */
+  }
+}
+
+/**
+ * Every pulse this dot takes in one cycle: when it starts, how long it runs,
+ * how deep it goes. Ramps scale the last dot against the first; an echo
+ * repeats every hit fainter after a gap.
+ */
+function waveHits(key, c) {
+  const off = waveOffsetOf(key, c);
+  const len = Math.max(c.pulseMs * lerp(1, c.rampLen, off), MIN_LEN);
+  const amp = lerp(1, c.rampDepth, off);
+  const hits = [{ t0: off * c.travelMs, len, amp }];
+  if (c.waveDir === "tide" && off < 0.999) {
+    /* The sweep turns at the far side and comes back through everyone. */
+    hits.push({ t0: (2 - off) * c.travelMs, len, amp });
+  }
+  if (c.waveDir === "collide") {
+    /* The mirror wave, running the diagonal the other way. */
+    hits.push({ t0: (1 - off) * c.travelMs, len, amp });
+  }
+  if (c.echoAmt > 0) {
+    for (const h of [...hits]) {
+      hits.push({ t0: h.t0 + c.echoGap, len: h.len, amp: h.amp * c.echoAmt });
+    }
+  }
+  return hits;
+}
+
+function waveCycle(c) {
+  /* The tide never rests: a lap out and back is the whole cycle, and a pulse
+     still running at the end wraps into the next lap. */
+  if (c.waveDir === "tide") return Math.round(2 * c.travelMs);
+  let end = 0;
+  for (const d of DOTS) {
+    for (const h of waveHits(d.key, c)) end = Math.max(end, h.t0 + h.len);
+  }
+  return Math.round(end + c.restMs);
+}
+
+/* Every knob the wave engine takes, with defaults; presets override a few. */
+const WAVE_DEFAULTS = {
+  waveDir: "diag", waveShape: "dip", waveDepth: 0.24, grow: 0,
+  pulseMs: 700, travelMs: 560, restMs: 460,
+  dipAt: 0.4, overAmt: 0, windAmt: 0.4, springs: 2, damp: 3.4,
+  echoAmt: 0, echoGap: 320, rampLen: 1, rampDepth: 1, fadeAmt: 0
+};
+
+const WAVE_PRESETS = {
+  /* the pulse turned inside out: the wave grows the dots instead */
+  swell:     { mode:"bump", look:"wave", grow:1, waveDepth:0.17, overAmt:0.14,
+               dipAt:0.42, pulseMs:840, travelMs:620, restMs:520 },
+  /* ba-DUM: each dot beats twice as the wave passes */
+  drum:      { mode:"bump", look:"wave", waveShape:"double", waveDepth:0.26,
+               pulseMs:780, travelMs:520, restMs:480 },
+  /* down hard, home on a spring that rings a few times */
+  elastic:   { mode:"bump", look:"wave", waveShape:"elastic", waveDepth:0.30,
+               springs:2, damp:3.2, pulseMs:1080, travelMs:460, restMs:440 },
+  /* a small grow first, so the dip that follows lands harder */
+  windup:    { mode:"bump", look:"wave", waveShape:"windup", windAmt:0.45,
+               waveDepth:0.28, pulseMs:840, travelMs:560, restMs:480 },
+  /* straight down the mark, quick, the dots dimming as it passes */
+  rain:      { mode:"bump", look:"wave", waveDir:"down", waveDepth:0.26,
+               dipAt:0.36, pulseMs:600, travelMs:680, restMs:300, fadeAmt:0.30 },
+  /* out of the core: it beats first and the ring answers in two triads */
+  emanate:   { mode:"bump", look:"wave", waveDir:"out", waveDepth:0.24,
+               overAmt:0.12, pulseMs:660, travelMs:520, restMs:440 },
+  /* into the core, which lands deepest and pops back past neutral */
+  collapse:  { mode:"bump", look:"wave", waveDir:"in", waveDepth:0.20,
+               overAmt:0.16, rampDepth:1.6, pulseMs:660, travelMs:560, restMs:480 },
+  /* two waves leave opposite corners at once and cross in the middle */
+  crossfire: { mode:"bump", look:"wave", waveDir:"collide", waveDepth:0.17,
+               dipAt:0.38, pulseMs:560, travelMs:640, restMs:440 },
+  /* a sweep that turns at the far side and comes straight back; never rests */
+  tide:      { mode:"bump", look:"wave", waveDir:"tide", waveDepth:0.15,
+               dipAt:0.5, pulseMs:940, travelMs:1150, restMs:0 },
+  /* the wave picks up speed and weight as it crosses: slow and soft in,
+     quick and deep out */
+  doppler:   { mode:"bump", look:"wave", waveDepth:0.13, rampLen:0.42,
+               rampDepth:2.1, pulseMs:960, travelMs:920, restMs:440 },
+  /* the wave crosses, then a fainter copy of it follows */
+  echo:      { mode:"bump", look:"wave", waveDepth:0.26, echoAmt:0.45,
+               echoGap:360, pulseMs:620, travelMs:520, restMs:520 }
+};
+
 /* An order round the mark where no two consecutive dots are neighbours. */
 const TWINKLE = ["top", "bottom", "tr", "core", "ll", "lr", "tl"];
 
@@ -1467,6 +1614,30 @@ const BUMP_LOOKS = {
       o.sx = o.sy = 1 + c.beatScale * g;
       return o;
     }
+  },
+
+  /* Wave: the generalized pulse. Scale only - the dots stay seated - but the
+     pulse's shape, direction and physics are all the config's to choose. */
+  wave: {
+    op: true,
+    cycle: c => waveCycle(c),
+    marks: c => DOTS.flatMap(d => waveHits(d.key, c).map(h => h.t0)),
+    at(key, tm, c) {
+      const o = rest(), cyc = waveCycle(c);
+      const shape = WAVE_SHAPES[c.waveShape] || WAVE_SHAPES.dip;
+      let g = 0;
+      for (const h of waveHits(key, c)) {
+        /* a pulse straddling the seam is felt from both sides of it */
+        for (const t of [tm, tm - cyc, tm + cyc]) {
+          const u = (t - h.t0) / h.len;
+          if (u > 0 && u < 1) g += h.amp * shape(u, c);
+        }
+      }
+      g = clamp(g, -2.5, 2.5);           /* stacked waves add, within reason */
+      o.sx = o.sy = c.grow ? 1 + c.waveDepth * g : 1 - c.waveDepth * g;
+      if (c.fadeAmt) o.op = 1 - c.fadeAmt * clamp(g, 0, 1);
+      return o;
+    }
   }
 };
 
@@ -1532,7 +1703,13 @@ const BUMP_RANGE = {
   twinkleDip:[0.2,1,false], twinkleLift:[0,3,false],
   /* heartbeat */
   beatPush:[0,5,false], beatMs:[30,900,true], beatOut:[60,2000,true],
-  beat2:[80,2000,true], beat2Amt:[0,1.5,false], beatScale:[0,0.4,false]
+  beat2:[80,2000,true], beat2Amt:[0,1.5,false], beatScale:[0,0.4,false],
+  /* wave */
+  waveDepth:[0,0.7,false], grow:[0,1,true], pulseMs:[120,4000,true],
+  travelMs:[0,4000,true], restMs:[0,4000,true], dipAt:[0.1,0.9,false],
+  overAmt:[0,0.4,false], windAmt:[0,1,false], springs:[0.5,5,false],
+  damp:[0.5,10,false], echoAmt:[0,1,false], echoGap:[40,2000,true],
+  rampLen:[0.15,3,false], rampDepth:[0.2,4,false], fadeAmt:[0,0.9,false]
 };
 
 /* One line on what each look is, so the index, the gallery and the site all
@@ -1547,7 +1724,18 @@ const BUMP_NOTES = {
   swap:       "The two triads trade seats in opposite directions at once, ovals round the outside and circles cutting the inside.",
   equalizer:  "The dots bob like level meters, phase set by how far right they sit, so the rise travels across the mark.",
   twinkle:    "Dots dim and shrink one or two at a time, in an order that never lights two neighbours in a row.",
-  heartbeat:  "Two thumps and a long rest. The core leads each one and the ring answers, so the mark swells from the middle out."
+  heartbeat:  "Two thumps and a long rest. The core leads each one and the ring answers, so the mark swells from the middle out.",
+  swell:      "The pulse turned inside out: the wave grows the dots instead of shrinking them, settling with a soft dip past neutral.",
+  drum:       "Ba-DUM: each dot beats twice as the wave passes, the second beat the stronger.",
+  elastic:    "Down hard, home on a damped spring: each dot rings past its own size a few times before it stills.",
+  windup:     "A small grow first - anticipation - so the dip that follows lands harder.",
+  rain:       "Straight down the mark, quick, each dot dimming as the wave passes through it.",
+  emanate:    "Out of the core: it beats first and the ring answers, near triad then far.",
+  collapse:   "Into the core, which lands deepest of all and pops back past neutral.",
+  crossfire:  "Two waves leave opposite corners at once, cross in the middle, and run on through each other.",
+  tide:       "A sweep that turns at the far side and comes straight back through everyone. Never rests.",
+  doppler:    "The wave picks up speed and weight as it crosses: slow and soft in, quick and deep out.",
+  echo:       "The wave crosses, then a fainter copy of it follows before the rest."
 };
 
 const lookOf = c => BUMP_LOOKS[c.look] || BUMP_LOOKS.scatter;
@@ -1887,14 +2075,17 @@ ${animCss(c, "." + className, "." + className + " .dot")}`;
 
 /** Merge a preset with ?query overrides, keeping every value in range. */
 function resolveConfig(id, query = {}) {
-  const wantsBump = BUMP_PRESETS[id] || query.mode === "bump"
-                    || BUMP_PRESETS[query.preset] || BUMP_PRESETS[query.look];
+  const bumpTable = { ...BUMP_PRESETS, ...WAVE_PRESETS };
+  const wantsBump = bumpTable[id] || query.mode === "bump"
+                    || bumpTable[query.preset] || bumpTable[query.look];
   if (wantsBump) {
     /* A look only means anything with its own knobs, so ?look= picks the whole
        preset rather than pointing a different look's numbers at it. Naming one
        outright wins over the route's id, which may just be a session. */
-    const c = { ...(BUMP_PRESETS[query.look] || BUMP_PRESETS[id]
-                    || BUMP_PRESETS[query.preset] || BUMP_PRESETS.scatter) };
+    const chosen = bumpTable[query.look] || bumpTable[id]
+                   || bumpTable[query.preset] || BUMP_PRESETS.scatter;
+    /* wave presets only carry what they change; the engine fills the rest */
+    const c = chosen.look === "wave" ? { ...WAVE_DEFAULTS, ...chosen } : { ...chosen };
     for (const [k, [lo, hi, round]] of Object.entries(BUMP_RANGE)) {
       const n = parseFloat(query[k]);
       if (Number.isFinite(n)) c[k] = round ? Math.round(clamp(n, lo, hi)) : clamp(n, lo, hi);
@@ -2001,7 +2192,8 @@ function resolveConfig(id, query = {}) {
 }
 
 module.exports = { DOTS, CENTERS, RADIAL, RADIUS, PRESETS, ORBIT_PRESETS, CUBE_PRESETS,
-                   BUMP_PRESETS, BUMP_LOOKS, BUMP_NOTES, BUMP_RANGE, bumpCycle, bumpKeyframes, bumpReach,
+                   BUMP_PRESETS, BUMP_LOOKS, BUMP_NOTES, BUMP_RANGE,
+                   WAVE_PRESETS, WAVE_DEFAULTS, waveCycle, waveHits, bumpCycle, bumpKeyframes, bumpReach,
                    bumpSampleTimes, ANGLE, YPOS, XPOS, RPOS,
                    ROLL_PRESETS, SMEAR_PRESETS, DROP_PRESETS, DASH_PRESETS, ELLIPSE, TAIL_DEG,
                    dashPhases, dashProgress, dashRotation, dashShift, dashSpeedAt,

@@ -17,6 +17,9 @@ const esc = s => String(s).replace(/[&<>"']/g, ch =>
 const GALLERY = [
   { mode: "Pulse wave",
     ids: ["pulse", "snap", "ripple", "around", "bounce", "circuit", "spoke"] },
+  { mode: "Pulse wave II",
+    ids: ["swell", "drum", "elastic", "windup", "rain", "emanate", "collapse",
+          "crossfire", "tide", "doppler", "echo"] },
   { mode: "Bump", ids: ["scatter", "shockwave", "cradle", "jelly", "heartbeat"] },
   { mode: "Bump", ids: ["boil", "escapement", "swap", "equalizer", "twinkle"] },
   { mode: "Orbit spin", ids: ["bloom", "snappy"] },

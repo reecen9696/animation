@@ -19,6 +19,12 @@ see them in context.
 - **Dash** — the teardrop, but the mark travels: it rolls off to the right at
   speed like a thrown dice, hangs there a beat, then rolls slowly back to where
   it started. The only look that needs a box wider than the mark.
+- **Pulse wave II** — the pulse generalized: new shapes (`swell` grows
+  instead of shrinking, `drum` double-beats, `elastic` springs home, `windup`
+  anticipates), new directions (`rain` falls straight down, `emanate` leaves
+  the core, `collapse` runs into it, `crossfire` collides two waves, `tide`
+  sweeps out and back without resting) and new physics (`doppler` picks up
+  speed and depth across the mark, `echo` is followed by a fainter copy).
 - **Bump** — ten looks that move the dots rather than only scaling them in
   place. `scatter` bursts them apart and snaps them home; `shockwave` pushes
   the ring out ahead of a compressing core; `cradle` runs a Newton's cradle
